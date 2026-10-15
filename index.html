@@ -1,0 +1,3103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>お墓で缶蹴り</title>
+<meta name="theme-color" content="#05060d">
+<style>
+  /* 夜の墓地を一人称で歩く。画面いっぱいの 3D と、その上に浮かぶ半透明のパネル */
+  :root {
+    color-scheme: dark;
+    --bg: #05060d;
+    --panel: rgba(16, 18, 34, 0.95);
+    --line: rgba(160, 170, 255, 0.22);
+    --text: #e8e9f5;
+    --muted: #9aa0c3;
+    --accent: #ff6b4a;
+    --accent2: #d9452a;
+    --chip: rgba(10, 12, 26, 0.72);
+    --font: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: var(--font); -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  canvas#ui { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; z-index: 2; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(120,0,0,.55) 100%); }
+  #blind { position: fixed; inset: 0; z-index: 3; background: rgba(0,0,0,.94); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px; pointer-events: none; text-align: center; padding: 16px; }
+  #blind b { font-size: 72px; color: #ffe08a; font-variant-numeric: tabular-nums; }
+
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+    background: rgba(5, 6, 14, 0.55); z-index: 10; overflow-y: auto; }
+  .card { width: 100%; max-width: 440px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 18px; padding: 22px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.6); margin: auto; }
+  h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: .06em; text-align: center; text-wrap: balance;
+    text-shadow: 0 0 18px rgba(170, 200, 255, .55); }
+  h2 { margin: 0 0 12px; font-size: 22px; text-align: center; }
+  .sub { text-align: center; color: var(--muted); font-size: 13px; margin: 0 0 16px; line-height: 1.6; }
+  .row { display: flex; gap: 14px; align-items: center; margin: 12px 0; }
+  .face-preview { width: 104px; height: 104px; border-radius: 50%; flex: none; border: 4px solid #f4c27a;
+    background: #f6d7b0 center/cover no-repeat; position: relative; overflow: hidden; }
+  .face-preview.empty::after { content: "・ ・\A ◡"; white-space: pre; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center; text-align: center; color: #3b2a1a;
+    font-size: 22px; line-height: 1.2; font-weight: bold; }
+  .face-btns { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+  label.field, .field { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  input[type=text] { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: rgba(255,255,255,.06); color: var(--text); }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; }
+  button, .btn { font: inherit; font-size: 15px; border: 1px solid var(--line); background: rgba(255,255,255,.07);
+    color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; text-align: center; }
+  button:focus-visible, input:focus-visible { outline: 2px solid #8f98ff; outline-offset: 2px; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.on { background: #3a3f78; border-color: #8f98ff; }
+  button.on.oni { background: #6e231a; border-color: #ff8a7a; }
+  button.primary { width: 100%; margin-top: 18px; padding: 14px; font-size: 18px; font-weight: bold;
+    background: linear-gradient(180deg, var(--accent), var(--accent2)); border: none; color: #fff; }
+  button.secondary { width: 100%; margin-top: 10px; padding: 12px; }
+  details { margin-top: 14px; font-size: 13px; color: var(--muted); line-height: 1.7; }
+  summary { cursor: pointer; color: var(--text); }
+  details ul { padding-left: 18px; margin: 8px 0 0; }
+  .big-emoji { font-size: 54px; text-align: center; margin: 0 0 6px; }
+  .result-text { text-align: center; color: var(--muted); line-height: 1.7; margin: 0 0 6px; }
+  .note { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 12px 0 0; }
+  .members { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+  .members li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--line);
+    border-radius: 12px; background: rgba(255,255,255,.04); min-width: 0; }
+  .members img, .members .noface { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none;
+    background: #f6d7b0; border: 2px solid #f4c27a; }
+  .members .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #3a3f78; color: #dfe2ff; flex: none; }
+  .tag.me { background: #6b2f55; color: #ffd6ee; }
+  .tag.oni { background: #6e231a; color: #ffd0c8; }
+  .status { text-align: center; color: var(--muted); font-size: 13px; margin: 10px 0 0; min-height: 1.2em; line-height: 1.6; }
+  .codebox { display: flex; gap: 8px; }
+  .codebox input { flex: 1; min-width: 0; letter-spacing: .2em; font-variant-numeric: tabular-nums; }
+
+  #hud { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 8px; z-index: 5; flex-wrap: wrap;
+    padding: max(10px, env(safe-area-inset-top, 0px)) max(116px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px));
+    pointer-events: none; }
+  .chip { background: var(--chip); border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 12px; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .chip.role { background: rgba(60, 20, 16, .8); border-color: rgba(255,138,122,.4); }
+  #warn { position: fixed; left: 50%; top: max(58px, calc(env(safe-area-inset-top, 0px) + 50px)); transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px; padding: 6px 16px 6px 10px; border-radius: 999px; z-index: 6;
+    font-weight: bold; font-size: 17px; white-space: nowrap; pointer-events: none; border: 2px solid; }
+  #warn .ico { font-size: 26px; line-height: 1; }
+  #warn.lv1 { background: rgba(60, 46, 0, .82); border-color: #ffd34a; color: #ffe58a; animation: warnPulse 1s ease-in-out infinite; }
+  #warn.lv2 { background: rgba(90, 0, 0, .86); border-color: #ff4a4a; color: #ffd0d0; animation: warnPulse .35s ease-in-out infinite; }
+  @keyframes warnPulse { 50% { transform: translateX(-50%) scale(1.08); } }
+  @media (prefers-reduced-motion: reduce) { #warn.lv1, #warn.lv2 { animation: none; } }
+  #msg { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); font-size: 26px; font-weight: bold;
+    text-align: center; pointer-events: none; z-index: 6; text-shadow: 0 2px 10px #000, 0 0 20px rgba(0,0,0,.8);
+    white-space: nowrap; transition: opacity .3s; opacity: 0; }
+  #hint { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    font-size: 13px; color: var(--muted); background: var(--chip); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 14px; pointer-events: none; z-index: 5; white-space: nowrap; transition: opacity .6s; }
+  #spectate { position: fixed; bottom: max(14px, env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; align-items: center; z-index: 6; }
+  #spectate .chip { pointer-events: none; }
+  #spectate button { padding: 8px 14px; background: rgba(10,12,26,.85); }
+  #muteBtn { position: fixed; right: max(64px, calc(env(safe-area-inset-right, 0px) + 52px)); top: max(10px, env(safe-area-inset-top, 0px)); z-index: 7; padding: 6px 10px; }
+  #pauseBtn { position: fixed; right: max(12px, env(safe-area-inset-right, 0px)); top: max(10px, env(safe-area-inset-top, 0px)); z-index: 7; padding: 6px 12px; }
+  #lightBtn { position: fixed; right: max(18px, env(safe-area-inset-right, 0px)); bottom: max(22px, env(safe-area-inset-bottom, 0px));
+    width: 72px; height: 72px; border-radius: 50%; font-size: 30px; z-index: 7; padding: 0;
+    background: rgba(10,12,26,.8); }
+  #poopBtn { position: fixed; right: max(100px, env(safe-area-inset-right, 0px)); bottom: max(22px, env(safe-area-inset-bottom, 0px));
+    width: 72px; height: 72px; border-radius: 50%; font-size: 30px; z-index: 7; padding: 0; background: rgba(10,12,26,.8);
+    border-color: rgba(255, 210, 80, .55); box-shadow: 0 0 18px rgba(255,200,60,.35); }
+  #poopBtn b { position: absolute; right: -2px; top: -2px; min-width: 24px; height: 24px; border-radius: 12px; font-size: 13px;
+    line-height: 24px; background: #e0a21c; color: #1a1208; font-variant-numeric: tabular-nums; }
+  #poopBtn:disabled { box-shadow: none; }
+  #lightBtn.on { background: rgba(255, 220, 140, .3); border-color: #ffe08a; box-shadow: 0 0 24px rgba(255,220,140,.45); }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); z-index: 1; padding: 16px; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { #msg, #hint { transition: none; } }
+</style>
+</head>
+<body>
+<div id="loading">よみこみ中…</div>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+<canvas id="ui"></canvas>
+<div id="blind" hidden><span>目をつぶって数えてる…</span><b id="blindNum">10</b><span>みんながかくれるまで待とう</span></div>
+
+<div id="hud" hidden>
+  <span class="chip role" id="hudRole" hidden>👹 鬼</span>
+  <span class="chip" id="hudTime">⏱ 2:00</span>
+  <span class="chip" id="hudKick">🥫 0</span>
+  <span class="chip" id="hudCaught">🔒 0</span>
+  <span class="chip" id="hudRoom" hidden>👥 1</span>
+</div>
+<div id="warn" hidden><span class="ico" id="warnIco">⚠️</span><span id="warnText"></span></div>
+<div id="msg"></div>
+<div id="hint" hidden></div>
+<button id="pauseBtn" hidden aria-label="一時停止">Ⅱ</button>
+<button id="muteBtn" hidden aria-label="BGM のオン・オフ">🔊</button>
+<button id="lightBtn" hidden aria-label="ライトをつける・消す">🔦</button>
+<button id="poopBtn" hidden aria-label="金のうんこを投げる">💩<b id="poopNum">1</b></button>
+<div id="spectate" hidden>
+  <button id="specPrev" aria-label="前の人">◀</button>
+  <span class="chip" id="specName">観戦中</span>
+  <button id="specNext" aria-label="次の人">▶</button>
+  <button id="specQuit">やめる</button>
+</div>
+
+<!-- タイトル -->
+<div class="overlay" id="title">
+  <div class="card">
+    <h1>👻 お墓で缶蹴り 🥫</h1>
+    <p class="sub">真っ暗なお墓を、自分の目で歩く缶蹴り。<br>あの影は、鬼？ 仲間？ それとも…お化け？</p>
+
+    <div class="row">
+      <div class="face-preview empty" id="facePreview"></div>
+      <div class="face-btns">
+        <label class="btn" for="faceInput">📷 顔の画像をえらぶ</label>
+        <input type="file" id="faceInput" accept="image/*" hidden>
+        <button id="faceClear">画像をはずす</button>
+      </div>
+    </div>
+
+    <label class="field" for="nameInput">なまえ</label>
+    <input type="text" id="nameInput" maxlength="8" placeholder="あなた">
+
+    <span class="field">やく</span>
+    <div class="seg" id="roleSeg">
+      <button data-r="hider" class="on">🙈 かくれる</button>
+      <button data-r="oni">👹 鬼になる</button>
+    </div>
+
+    <span class="field">こわさ</span>
+    <div class="seg" id="diffSeg">
+      <button data-d="0">やさしい</button>
+      <button data-d="1" class="on">ふつう</button>
+      <button data-d="2">こわい</button>
+    </div>
+
+    <button class="primary" id="startBtn">ひとりであそぶ</button>
+    <button class="secondary" id="friendBtn">👥 友達とあそぶ</button>
+    <button class="secondary" id="titleBgm">🎵 BGM：ON</button>
+
+    <details>
+      <summary>あそびかた</summary>
+      <ul>
+        <li>PC：W A S D で歩く、マウスで見まわす（画面をクリック）、F でライト</li>
+        <li>スマホ：画面の左半分をドラッグで歩く、右半分をドラッグで見まわす、🔦ボタンでライト</li>
+        <li><b>かくれる役：</b>鬼が 10 数えるうちにお墓のかげへ。鬼のライトに照らされると「みーっけ！」。鬼より先に缶にさわれば「カーン！」と蹴れて、つかまった仲間がにげられる。時間いっぱい逃げきれば勝ち。</li>
+        <li><b>鬼の役：</b>ライトで照らして子を見つけたら、缶まで戻ってふむとつかまえられる。缶を蹴られたら拾って元の場所へ。全員つかまえたら勝ち。</li>
+        <li>ライトをつけると遠くまで見えるけど、鬼にも見つかりやすくなる。</li>
+        <li><b>金のうんこ</b>（かくれる役は最初に1個）：G キーか 💩 ボタンで前に投げる。鬼に当たると鬼は 20 秒動けない。</li>
+        <li>暗いと、だれなのか見分けがつかない。<b>お化けにさわるとゲームオーバー</b>（観戦するか、やめるかを選べます）。</li>
+        <li>缶のまわり（ちょうちんの明かり）にはお化けは入ってこない。</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<!-- 友達とあそぶ -->
+<div class="overlay" id="lobby" hidden>
+  <div class="card">
+    <h2>👥 友達とあそぶ</h2>
+    <div id="lobbyJoin">
+      <label class="field" for="codeInput">合言葉（同じ合言葉の人と遊べます）</label>
+      <div class="codebox">
+        <input type="text" id="codeInput" maxlength="12" autocomplete="off" inputmode="numeric" placeholder="1234">
+        <button id="joinBtn">部屋に入る</button>
+      </div>
+    </div>
+    <p class="status" id="lobbyStatus"></p>
+    <p class="note" id="netInfo"></p>
+    <ul class="members" id="members"></ul>
+    <button class="secondary" id="lobbyRole" hidden>👹 鬼をやりたい：いいえ</button>
+    <button class="primary" id="hostStartBtn" hidden>この人数ではじめる</button>
+    <button class="secondary" id="lobbyBack">もどる</button>
+    <p class="note">友達にこのページのリンクを送って、同じ合言葉を入れてもらってね。いちばん先に部屋に入った人が「ホスト」になってスタートします。鬼をやりたい人が何人かいたら、先に部屋に入った人が鬼。だれもいなければ CPU の鬼です。こわさはホストの設定になります。</p>
+  </div>
+</div>
+
+<!-- お化けに当たった -->
+<div class="overlay" id="deadModal" hidden>
+  <div class="card">
+    <div class="big-emoji">👻</div>
+    <h2>お化けにつかまった…</h2>
+    <p class="result-text" id="deadText">たましいを抜かれてしまった。</p>
+    <button class="primary" id="watchBtn">👀 観戦モードで見る</button>
+    <button class="secondary" id="quitBtn">やめる</button>
+  </div>
+</div>
+
+<!-- 結果 -->
+<div class="overlay" id="resultModal" hidden>
+  <div class="card">
+    <div class="big-emoji" id="resultEmoji">🎉</div>
+    <h2 id="resultTitle">逃げきった！</h2>
+    <p class="result-text" id="resultText"></p>
+    <button class="primary" id="againBtn">もういちど</button>
+    <button class="secondary" id="toTitleBtn">タイトルへ</button>
+  </div>
+</div>
+
+<!-- 一時停止 -->
+<div class="overlay" id="pauseModal" hidden>
+  <div class="card">
+    <h2>一時停止</h2>
+    <button class="primary" id="resumeBtn">つづける</button>
+    <button class="secondary" id="pauseQuitBtn">やめる</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+const show = (id, on) => { $(id).hidden = !on; };
+
+// ---------- 設定 ----------
+const WORLD_W = 1800, WORLD_H = 1300;
+const HOME = { x: WORLD_W / 2, y: WORLD_H / 2 };
+const ROUND_TIME = 150;
+const COUNT_TIME = 10;
+const R = 15;              // キャラの当たり半径（ゲーム内の座標）
+const SAFE_R = 150;        // 缶のまわりのお化けが入れない範囲
+const CELL = 30;           // 経路探索グリッド
+const U = 1 / 40;          // ゲーム座標 → 3D の単位
+const SPEED = 172;         // 自分の歩く速さ
+const ONI_SPEED = 182;
+const CONE = 0.62;         // 鬼の見える角度（半分）
+const DIFF = [
+  { ghosts: 3, ghostSpeed: 40, oniSearch: 95, oniRun: 145, vision: 230, addGhostEvery: 60 },
+  { ghosts: 4, ghostSpeed: 50, oniSearch: 105, oniRun: 155, vision: 260, addGhostEvery: 40 },
+  { ghosts: 6, ghostSpeed: 62, oniSearch: 115, oniRun: 168, vision: 290, addGhostEvery: 25 },
+];
+const CPU_NAMES = ['たろう', 'はなこ', 'けんた', 'ゆうき'];
+const CPU_COLORS = ['#4aa3ff', '#ffd54a', '#7be07b', '#c38bff'];
+const HUMAN_COLORS = ['#ff9ad5', '#ff9f43', '#54e0d0', '#f7f06d', '#9fb3ff', '#ff6f91', '#b6ff7a', '#ffffff'];
+const ONI_CODE = { count: 0, search: 1, return: 2, guard: 3, fetch: 4, recount: 5 };
+const CAN_CODE = { home: 0, flying: 1, away: 2, carried: 3 };
+const isTouch = matchMedia('(pointer: coarse)').matches;
+
+// ---------- 保存（使えなくても動くように） ----------
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+
+// ---------- 顔画像 ----------
+let faceImg = null, faceSmall = null;
+const facePreview = $('facePreview');
+function setFace(dataUrl) {
+  faceImg = null; faceSmall = null;
+  if (!dataUrl) {
+    facePreview.style.backgroundImage = '';
+    facePreview.classList.add('empty');
+    pushLobbyPresence();
+    return;
+  }
+  const img = new Image();
+  img.onload = () => { faceImg = img; faceSmall = shrinkFace(img); pushLobbyPresence(); };
+  img.src = dataUrl;
+  facePreview.style.backgroundImage = `url("${dataUrl}")`;
+  facePreview.classList.remove('empty');
+}
+// 友達に送る用の小さい顔（通信量を小さくする）
+function shrinkFace(img) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 44;
+  c.getContext('2d').drawImage(img, 0, 0, 44, 44);
+  for (let q = 0.75; q > 0.2; q -= 0.1) {
+    const u = c.toDataURL('image/jpeg', q);
+    if (u.length < 1500) return u;
+  }
+  return null;
+}
+$('faceInput').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const src = new Image();
+    src.onload = () => {
+      const size = 256;
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const s = Math.min(src.width, src.height);
+      c.getContext('2d').drawImage(src, (src.width - s) / 2, (src.height - s) / 2, s, s, 0, 0, size, size);
+      const url = c.toDataURL('image/jpeg', 0.85);
+      setFace(url);
+      store.set('kankeri-face', url);
+    };
+    src.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+$('faceClear').addEventListener('click', () => { setFace(null); store.del('kankeri-face'); });
+
+const nameInput = $('nameInput');
+nameInput.value = store.get('kankeri-name') || '';
+const myName = () => (nameInput.value.trim() || 'あなた').slice(0, 8);
+
+let difficulty = Number(store.get('kankeri-diff') || 1);
+let role = store.get('kankeri-role') === 'oni' ? 'oni' : 'hider';
+function renderSeg() {
+  for (const b of $('diffSeg').querySelectorAll('button')) b.classList.toggle('on', Number(b.dataset.d) === difficulty);
+  for (const b of $('roleSeg').querySelectorAll('button')) { b.classList.toggle('on', b.dataset.r === role); b.classList.toggle('oni', b.dataset.r === 'oni'); }
+  $('lobbyRole').textContent = `👹 鬼をやりたい：${role === 'oni' ? 'はい' : 'いいえ'}`;
+  $('lobbyRole').classList.toggle('on', role === 'oni');
+  $('lobbyRole').classList.toggle('oni', role === 'oni');
+}
+$('diffSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  difficulty = Number(b.dataset.d); store.set('kankeri-diff', String(difficulty)); renderSeg();
+});
+$('roleSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  role = b.dataset.r; store.set('kankeri-role', role); renderSeg();
+});
+$('lobbyRole').addEventListener('click', () => {
+  role = role === 'oni' ? 'hider' : 'oni'; store.set('kankeri-role', role); renderSeg();
+  pushLobbyPresence();
+});
+renderSeg();
+
+// ---------- 音 ----------
+let actx = null;
+function beep(freq, dur, type = 'square', vol = 0.06, slide = 0, delay = 0) {
+  try {
+    audioCtx();
+    const t = actx.currentTime + delay;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  } catch (e) {}
+}
+const sfx = {
+  kick() { beep(1400, 0.25, 'triangle', 0.12, -600); beep(2100, 0.18, 'sine', 0.06); },
+  spot() { beep(660, 0.12, 'square', 0.06); beep(880, 0.16, 'square', 0.06, 0, 0.12); },
+  catch() { beep(330, 0.3, 'sawtooth', 0.05, -150); },
+  ghost() { beep(500, 1.2, 'sine', 0.1, -380); beep(507, 1.2, 'sine', 0.08, -390); },
+  start() { beep(520, 0.12, 'triangle', 0.08); beep(780, 0.2, 'triangle', 0.08, 0, 0.14); },
+  click() { beep(1800, 0.03, 'square', 0.03); },
+  toss() { beep(500, 0.18, 'sine', 0.06, 500); },
+  splat() { beep(160, 0.35, 'sawtooth', 0.1, -100); beep(900, 0.5, 'triangle', 0.07, -500, 0.05); beep(1300, 0.15, 'sine', 0.05, 300, 0.3); },
+  wake() { beep(220, 0.2, 'square', 0.05, 200); },
+  heart(v) { beep(58, 0.13, 'sine', 0.22 * v, -10); beep(52, 0.12, 'sine', 0.16 * v, -8, 0.16); },
+};
+
+// ---------- BGM（その場で合成するホラー曲） ----------
+//  ・ふだん：低いうなり＋風＋ときどきオルゴール（和風の暗い音階）
+//  ・鬼が近い／お化けが近い：トレモロの不協和音がふくらむ
+//  ・みつかった：速い刻みで追いかけられる曲に
+const bgm = { on: store.get('kankeri-bgm') !== 'off', started: false, nextBox: 0, nextStep: 0, step: 0, nextWhisper: 0 };
+function audioCtx() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume().catch(() => {});
+  return actx;
+}
+function bgmStart() {
+  if (bgm.started || !bgm.on) return;
+  let ac;
+  try { ac = audioCtx(); } catch (e) { return; }
+  bgm.started = true;
+  const now = ac.currentTime;
+  const master = ac.createGain(); master.gain.value = 0;
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 4;
+  master.connect(comp).connect(ac.destination);
+  // 残響（作ったノイズの響き）
+  const len = ac.sampleRate * 3.2, ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+  const verb = ac.createConvolver(); verb.buffer = ir;
+  const wet = ac.createGain(); wet.gain.value = 0.55; verb.connect(wet).connect(master);
+  const lfo = (freq, depth, target) => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = freq; g.gain.value = depth; o.connect(g).connect(target); o.start(); return o; };
+
+  // 低いうなり（少しずらした2音でうねる）
+  const droneF = ac.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 170; droneF.Q.value = 7;
+  lfo(0.045, 90, droneF.frequency);
+  const droneG = ac.createGain(); droneG.gain.value = 0.2;
+  [[55, 'sawtooth'], [55.6, 'sawtooth'], [27.5, 'sine'], [82.4, 'triangle']].forEach(([f, ty]) => { const o = ac.createOscillator(); o.type = ty; o.frequency.value = f; o.connect(droneF); o.start(); });
+  droneF.connect(droneG); droneG.connect(master); droneG.connect(verb);
+
+  // 高いところで鳴りつづける、きしむような音
+  const highG = ac.createGain(); highG.gain.value = 0.0;
+  lfo(0.07, 0.012, highG.gain);
+  [1244.5, 1318.5].forEach((f) => { const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = f; lfo(0.2 + Math.random() * 0.2, 4, o.frequency); o.connect(highG); o.start(); });
+  const highBase = ac.createConstantSource ? ac.createConstantSource() : null;
+  if (highBase) { highBase.offset.value = 0.014; highBase.connect(highG.gain); highBase.start(); }
+  highG.connect(verb);
+
+  // 風（ノイズ）
+  const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), nd = nb.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  bgm.noise = nb;
+  const wind = ac.createBufferSource(); wind.buffer = nb; wind.loop = true;
+  const windF = ac.createBiquadFilter(); windF.type = 'bandpass'; windF.frequency.value = 600; windF.Q.value = 0.9;
+  lfo(0.06, 380, windF.frequency);
+  const windG = ac.createGain(); windG.gain.value = 0.05;
+  lfo(0.11, 0.03, windG.gain);
+  wind.connect(windF).connect(windG); windG.connect(master); windG.connect(verb); wind.start();
+
+  // 緊張のトレモロ（短2度・増4度の不協和）
+  const tenF = ac.createBiquadFilter(); tenF.type = 'lowpass'; tenF.frequency.value = 2200;
+  const trem = ac.createGain(); trem.gain.value = 0.5; lfo(9, 0.5, trem.gain);
+  const tenG = ac.createGain(); tenG.gain.value = 0;
+  [146.8, 155.6, 207.7, 220].forEach((f, i) => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = (i - 1.5) * 6; o.connect(tenF); o.start(); });
+  tenF.connect(trem).connect(tenG); tenG.connect(master); tenG.connect(verb);
+
+  master.gain.setTargetAtTime(0.5, now, 1.5);
+  Object.assign(bgm, { ac, master, verb, tenG, droneG, windG, chase: 0, nextBox: now + 2, nextStep: now });
+}
+function bgmSetOn(on) {
+  bgm.on = on;
+  store.set('kankeri-bgm', on ? 'on' : 'off');
+  if (on) { bgmStart(); if (bgm.master) bgm.master.gain.setTargetAtTime(0.5, bgm.ac.currentTime, 0.4); }
+  else if (bgm.master) bgm.master.gain.setTargetAtTime(0, bgm.ac.currentTime, 0.2);
+  renderBgmBtns();
+}
+function renderBgmBtns() {
+  for (const id of ['muteBtn', 'titleBgm']) { const b = $(id); if (!b) continue; b.textContent = id === 'muteBtn' ? (bgm.on ? '🔊' : '🔇') : `🎵 BGM：${bgm.on ? 'ON' : 'OFF'}`; b.classList.toggle('on', bgm.on); }
+}
+// 一音ずつ鳴らす（音色・長さ・行き先をえらべる）
+function bgmNote(freq, when, dur, vol, type = 'sine', toVerb = 0.8) {
+  const ac = bgm.ac, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(vol, when + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  o.connect(g); g.connect(bgm.master);
+  if (toVerb) { const s = ac.createGain(); s.gain.value = toVerb; g.connect(s).connect(bgm.verb); }
+  o.start(when); o.stop(when + dur + 0.05);
+}
+const IN_SCALE = [293.7, 311.1, 392, 440, 466.2, 587.3, 622.3, 784]; // D Eb G A Bb（都節の暗い音階）
+function bgmUpdate(dt) {
+  if (!bgm.started || !bgm.on) return;
+  const ac = bgm.ac, now = ac.currentTime;
+  const playing = !!mode && !paused && !(game && game.over) && !net.ended;
+  const s = mode ? myViewState() : null;
+  const lv = threat.lv || 0;
+  const chase = playing && s && s.role === 'hider' && (lv >= 3 || (s.me && s.me.st === 1));
+  const oniChase = playing && s && s.role === 'oni' && view.kids.some((k) => k.st === 1);
+  const tension = playing ? Math.max(danger, lv >= 2 ? 0.8 : lv === 1 ? 0.45 : 0) : 0;
+  bgm.tenG.gain.setTargetAtTime(chase || oniChase ? 0.09 : tension * 0.075, now, 0.6);
+  bgm.droneG.gain.setTargetAtTime(mode ? 0.2 + tension * 0.12 : 0.13, now, 1);
+  bgm.master.gain.setTargetAtTime(paused ? 0.05 : (mode ? ((game && game.over) || net.ended ? 0.2 : 0.5) : 0.32), now, 0.5);
+  // オルゴール（静かなとき）
+  if (now >= bgm.nextBox && !chase) {
+    const n = IN_SCALE[Math.random() * IN_SCALE.length | 0];
+    bgmNote(n, now, 2.2, 0.05, 'sine', 1);
+    bgmNote(n * 2.01, now, 1.2, 0.015, 'sine', 1);
+    if (Math.random() < 0.45) { const m = IN_SCALE[Math.random() * IN_SCALE.length | 0]; bgmNote(m, now + 0.45, 2, 0.04, 'sine', 1); }
+    if (Math.random() < 0.2) bgmNote(n * 0.94, now + 0.9, 2.5, 0.035, 'sine', 1); // 少し音程がくるう
+    bgm.nextBox = now + (tension > 0.4 ? rand(1.2, 2.5) : rand(2.8, 6.5));
+  }
+  // 追いかけられるときの刻み（低い太鼓＋不協和の連打）
+  if ((chase || oniChase) && now >= bgm.nextStep) {
+    const pat = [73.4, 77.8, 73.4, 110, 73.4, 77.8, 103.8, 98];
+    const f = pat[bgm.step % pat.length];
+    bgmNote(f, now, 0.16, 0.12, 'sawtooth', 0.2);
+    if (bgm.step % 2 === 0) bgmNote(48, now, 0.25, 0.25, 'sine', 0.1);
+    if (bgm.step % 8 === 7) bgmNote(f * 8, now, 0.3, 0.03, 'square', 0.6);
+    bgm.step++;
+    bgm.nextStep = now + 0.16;
+  } else if (!(chase || oniChase)) bgm.nextStep = now;
+  // 遠くで聞こえる太鼓（緊張してくると）
+  if (playing && tension > 0.3 && !chase && now >= (bgm.nextTaiko || 0)) {
+    bgmNote(55, now, 0.5, 0.18 * tension, 'sine', 0.6);
+    bgmNote(42, now + 0.02, 0.6, 0.12 * tension, 'triangle', 0.6);
+    bgm.nextTaiko = now + lerp(2.4, 0.9, tension);
+  }
+  // お化けのささやき
+  if (playing && now >= bgm.nextWhisper && s && s.me) {
+    const near = view.ghosts.some((g) => Math.hypot(g.x - s.me.x, g.y - s.me.y) < 280);
+    if (near && Math.random() < 0.5) {
+      const src = ac.createBufferSource(); src.buffer = bgm.noise;
+      const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = rand(1800, 3200); f.Q.value = 6;
+      f.frequency.linearRampToValueAtTime(rand(900, 1500), now + 1.2);
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.09, now + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+      src.connect(f).connect(g); g.connect(bgm.master); g.connect(bgm.verb);
+      src.start(now, Math.random()); src.stop(now + 1.5);
+    }
+    bgm.nextWhisper = now + rand(3, 7);
+  }
+}
+// 最初にさわったときに鳴らしはじめる（ブラウザのきまり）
+const firstGesture = () => { bgmStart(); removeEventListener('pointerdown', firstGesture); removeEventListener('keydown', firstGesture); };
+addEventListener('pointerdown', firstGesture);
+addEventListener('keydown', firstGesture);
+
+// ---------- ユーティリティ ----------
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
+const lerp = (a, b, k) => a + (b - a) * k;
+function angleDiff(a, b) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
+function mulberry32(a) {
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+let mapRand = Math.random;
+const mrand = (a, b) => a + mapRand() * (b - a);
+
+// 線分と矩形の交差（Liang–Barsky）
+function segHitsRect(x1, y1, x2, y2, r) {
+  let t0 = 0, t1 = 1;
+  const dx = x2 - x1, dy = y2 - y1;
+  const p = [-dx, dx, -dy, dy];
+  const q = [x1 - r.x, r.x + r.w - x1, y1 - r.y, r.y + r.h - y1];
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) { if (q[i] < 0) return false; }
+    else {
+      const t = q[i] / p[i];
+      if (p[i] < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+      else { if (t < t0) return false; if (t < t1) t1 = t; }
+    }
+  }
+  return true;
+}
+function circleRectPush(c, r, rad) {
+  const cx = clamp(c.x, r.x, r.x + r.w), cy = clamp(c.y, r.y, r.y + r.h);
+  const dx = c.x - cx, dy = c.y - cy;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= rad * rad) return;
+  if (d2 === 0) {
+    const l = c.x - r.x, rr = r.x + r.w - c.x, t = c.y - r.y, b = r.y + r.h - c.y;
+    const m = Math.min(l, rr, t, b);
+    if (m === l) c.x = r.x - rad; else if (m === rr) c.x = r.x + r.w + rad;
+    else if (m === t) c.y = r.y - rad; else c.y = r.y + r.h + rad;
+    return;
+  }
+  const d = Math.sqrt(d2);
+  c.x = cx + dx / d * rad; c.y = cy + dy / d * rad;
+}
+
+// ---------- マップ（合言葉の部屋ではみんな同じ形になるよう seed から作る） ----------
+let obstacles = [];
+let decor = [];
+let grid = null, GW = 0, GH = 0;
+
+function buildMap(seed) {
+  mapRand = mulberry32(seed);
+  obstacles = [];
+  decor = [];
+  obstacles.push({ x: 0, y: 0, w: WORLD_W, h: 30, kind: 'wall' });
+  obstacles.push({ x: 0, y: WORLD_H - 30, w: WORLD_W, h: 30, kind: 'wall' });
+  obstacles.push({ x: 0, y: 0, w: 30, h: WORLD_H, kind: 'wall' });
+  obstacles.push({ x: WORLD_W - 30, y: 0, w: 30, h: WORLD_H, kind: 'wall' });
+
+  for (let gy = 110; gy < WORLD_H - 90; gy += 115) {
+    for (let gx = 110; gx < WORLD_W - 90; gx += 125) {
+      const x = gx + mrand(-18, 18), y = gy + mrand(-14, 14);
+      const roll = mapRand();
+      const tint = mrand(-0.08, 0.08), tall = mrand(1.1, 1.7), w = mrand(40, 56), h = mrand(26, 34);
+      const r1 = mapRand(), r2 = mapRand(), n = 2 + (mapRand() * 3 | 0), fx = mrand(-12, 12), fc = mapRand() * 3 | 0;
+      if (Math.hypot(x - HOME.x, y - HOME.y) < 240) continue;
+      if (Math.abs(x - HOME.x) < 70 && y < 130) continue; // 鳥居の下はあける
+      if (roll < 0.66) {
+        obstacles.push({ x: x - w / 2, y: y - h / 2, w, h, kind: 'grave', tint, tall });
+        if (r1 < 0.35) decor.push({ kind: 'sotoba', x: x + w / 2 - 4, y: y - 2, n });
+        if (r2 < 0.3) decor.push({ kind: 'flower', x: x + fx, y: y + h / 2 + 4, c: fc });
+      } else if (roll < 0.76) {
+        obstacles.push({ x: x - w / 2, y: y - w / 2, w, h: w, kind: 'tree', tall: 0.9 + tint * 4 });
+      } else if (roll < 0.8) {
+        obstacles.push({ x: x - 14, y: y - 14, w: 28, h: 28, kind: 'lantern' });
+      }
+    }
+  }
+  obstacles.push({ x: 300 - 30, y: 260 - 30, w: 60, h: 60, kind: 'well' });
+  obstacles.push({ x: HOME.x - 78, y: 62, w: 16, h: 16, kind: 'torii' });
+  obstacles.push({ x: HOME.x + 62, y: 62, w: 16, h: 16, kind: 'torii' });
+  obstacles.push({ x: HOME.x + 52, y: HOME.y - 62, w: 10, h: 10, kind: 'pole' });
+
+  GW = Math.ceil(WORLD_W / CELL); GH = Math.ceil(WORLD_H / CELL);
+  grid = new Uint8Array(GW * GH);
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const cx = i * CELL + CELL / 2, cy = j * CELL + CELL / 2;
+    for (const o of obstacles) {
+      if (cx > o.x - R - 2 && cx < o.x + o.w + R + 2 && cy > o.y - R - 2 && cy < o.y + o.h + R + 2) { grid[j * GW + i] = 1; break; }
+    }
+  }
+}
+
+function blocked(i, j) { return i < 0 || j < 0 || i >= GW || j >= GH || grid[j * GW + i] === 1; }
+function toCell(p) { return { i: clamp(Math.floor(p.x / CELL), 0, GW - 1), j: clamp(Math.floor(p.y / CELL), 0, GH - 1) }; }
+function nearestFree(c) {
+  if (!blocked(c.i, c.j)) return c;
+  for (let r = 1; r < 6; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+    if (!blocked(c.i + di, c.j + dj)) return { i: c.i + di, j: c.j + dj };
+  }
+  return c;
+}
+function isFreePoint(p) { const c = toCell(p); return !blocked(c.i, c.j); }
+
+function findPath(from, to) {
+  const s = nearestFree(toCell(from)), t = nearestFree(toCell(to));
+  const N = GW * GH;
+  const gScore = new Float32Array(N).fill(Infinity);
+  const came = new Int32Array(N).fill(-1);
+  const closed = new Uint8Array(N);
+  const heap = [];
+  const push = (n, f) => {
+    heap.push([f, n]); let k = heap.length - 1;
+    while (k > 0) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last; let k = 0;
+      for (;;) {
+        const l = 2 * k + 1, r = l + 1; let m = k;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === k) break; [heap[m], heap[k]] = [heap[k], heap[m]]; k = m;
+      }
+    }
+    return top[1];
+  };
+  const si = s.j * GW + s.i, ti = t.j * GW + t.i;
+  const h = (n) => { const i = n % GW, j = (n / GW) | 0; return Math.hypot(i - t.i, j - t.j); };
+  gScore[si] = 0; push(si, h(si));
+  let iter = 0;
+  while (heap.length && iter++ < 4000) {
+    const cur = pop();
+    if (cur === ti) break;
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    const ci = cur % GW, cj = (cur / GW) | 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dj) continue;
+      const ni = ci + di, nj = cj + dj;
+      if (blocked(ni, nj)) continue;
+      if (di && dj && (blocked(ci + di, cj) || blocked(ci, cj + dj))) continue;
+      const n = nj * GW + ni;
+      const ng = gScore[cur] + (di && dj ? 1.414 : 1);
+      if (ng < gScore[n]) { gScore[n] = ng; came[n] = cur; push(n, ng + h(n)); }
+    }
+  }
+  if (came[ti] === -1 && si !== ti) return [{ x: to.x, y: to.y }];
+  const path = [];
+  let n = ti;
+  while (n !== -1 && n !== si) { path.push({ x: (n % GW) * CELL + CELL / 2, y: ((n / GW) | 0) * CELL + CELL / 2 }); n = came[n]; }
+  path.reverse();
+  if (isFreePoint(to)) path.push({ x: to.x, y: to.y });
+  const out = [];
+  let anchor = { x: from.x, y: from.y };
+  for (let k = 0; k < path.length; k++) {
+    const next = path[k + 1];
+    if (next && clearLine(anchor, next, R)) continue;
+    out.push(path[k]); anchor = path[k];
+  }
+  return out;
+}
+function clearLine(a, b, pad = 0) {
+  for (const o of obstacles) {
+    if (o.kind === 'wall') continue;
+    const r = pad ? { x: o.x - pad, y: o.y - pad, w: o.w + pad * 2, h: o.h + pad * 2 } : o;
+    if (segHitsRect(a.x, a.y, b.x, b.y, r)) return false;
+  }
+  return true;
+}
+
+// =====================================================================
+//  入力（一人称）：歩く・見まわす・ライト
+// =====================================================================
+const ctl = { yaw: 0, pitch: -0.05, light: false };
+const keys = new Set();
+const canvas = $('game');
+addEventListener('keydown', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+  if ((k === 'f' || k === ' ') && !e.repeat) toggleLight();
+  if (k === 'g' && !e.repeat) throwInput();
+  keys.add(k);
+  if (k === 'escape' && mode === 'solo' && game && !game.over && !document.pointerLockElement) togglePause();
+});
+addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
+
+const joy = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+const look = { id: null, x: 0, y: 0 };
+const lookable = () => mode && !paused;
+canvas.addEventListener('pointerdown', (e) => {
+  if (!lookable()) return;
+  if (e.pointerType === 'mouse') {
+    if (!document.pointerLockElement) {
+      try { const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {}
+    }
+    look.id = e.pointerId; look.x = e.clientX; look.y = e.clientY;
+  } else if (e.clientX < innerWidth / 2 && joy.id === null) {
+    joy.id = e.pointerId; joy.ox = joy.x = e.clientX; joy.oy = joy.y = e.clientY;
+  } else if (look.id === null) {
+    look.id = e.pointerId; look.x = e.clientX; look.y = e.clientY;
+  }
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerId === joy.id) { joy.x = e.clientX; joy.y = e.clientY; return; }
+  if (document.pointerLockElement === canvas) {
+    turn(e.movementX * 0.0024, e.movementY * 0.0024);
+    return;
+  }
+  if (e.pointerId === look.id) {
+    const k = e.pointerType === 'mouse' ? 0.005 : 0.0075;
+    turn((e.clientX - look.x) * k, (e.clientY - look.y) * k);
+    look.x = e.clientX; look.y = e.clientY;
+  }
+});
+const endPointer = (e) => { if (e.pointerId === joy.id) joy.id = null; if (e.pointerId === look.id) look.id = null; };
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+function turn(dx, dy) {
+  if (!lookable()) return;
+  ctl.yaw += dx;
+  ctl.pitch = clamp(ctl.pitch - dy, -0.75, 0.55);
+}
+
+// 歩く向き（自分の向きに対して前後・左右）
+function moveInput(dt) {
+  let f = 0, s = 0;
+  if (keys.has('w') || keys.has('arrowup')) f += 1;
+  if (keys.has('s') || keys.has('arrowdown')) f -= 1;
+  if (keys.has('d')) s += 1;
+  if (keys.has('a')) s -= 1;
+  if (keys.has('arrowleft') || keys.has('q')) turn(-2.2 * dt, 0);
+  if (keys.has('arrowright') || keys.has('e')) turn(2.2 * dt, 0);
+  if (joy.id !== null) {
+    const dx = joy.x - joy.ox, dy = joy.y - joy.oy, l = Math.hypot(dx, dy);
+    if (l > 6) { const m = Math.min(1, l / 42); s += dx / l * m; f -= dy / l * m; }
+  }
+  const c = Math.cos(ctl.yaw), sn = Math.sin(ctl.yaw);
+  let x = f * c - s * sn, y = f * sn + s * c;
+  const l = Math.hypot(x, y);
+  if (l > 1) { x /= l; y /= l; }
+  return { x, y };
+}
+
+function toggleLight() {
+  if (!mode || paused) return;
+  const me = view.kids.find((k) => k.isMe) || (view.oni.isMe ? view.oni : null);
+  if (!me || me.st === 3) return;
+  ctl.light = !ctl.light;
+  sfx.click();
+  $('lightBtn').classList.toggle('on', ctl.light);
+}
+$('lightBtn').addEventListener('click', toggleLight);
+// 金のうんこを投げる
+function throwInput() {
+  if (!mode || paused || spectating) return;
+  const s = myViewState();
+  if (s.role !== 'hider' || !s.me || s.st >= 2 || view.myPoop <= 0) return;
+  if (mode === 'client') {
+    net.throws++; view.myPoop--; net.poopHold = performance.now();
+    sfx.toss();
+    net.room && net.room.presence({ th: net.throws }).catch(() => {});
+  } else if (game) {
+    throwPoop(game.hiders.find((h) => h.kind === 'local'));
+  }
+}
+$('poopBtn').addEventListener('click', throwInput);
+
+// ---------- 移動 ----------
+function moveChar(c, vx, vy, dt, setFace = true) {
+  c.x += vx * dt; c.y += vy * dt;
+  for (const o of obstacles) circleRectPush(c, o, R);
+  c.x = clamp(c.x, 30 + R, WORLD_W - 30 - R);
+  c.y = clamp(c.y, 30 + R, WORLD_H - 30 - R);
+  if (setFace && (vx || vy)) c.face = Math.atan2(vy, vx);
+}
+function followPath(c, target, speed, dt, repath = 0.5) {
+  c.pathT -= dt;
+  if (!c.target || c.pathT <= 0 || Math.hypot(c.target.x - target.x, c.target.y - target.y) > 25) {
+    c.path = findPath(c, target); c.target = { x: target.x, y: target.y }; c.pathT = repath;
+  }
+  while (c.path.length && Math.hypot(c.path[0].x - c.x, c.path[0].y - c.y) < 8) c.path.shift();
+  const wp = c.path[0] || target;
+  const dx = wp.x - c.x, dy = wp.y - c.y, l = Math.hypot(dx, dy);
+  if (l < 2) return true;
+  const s = Math.min(speed, l / dt);
+  moveChar(c, dx / l * s, dy / l * s, dt);
+  return Math.hypot(target.x - c.x, target.y - c.y) < 10;
+}
+
+// =====================================================================
+//  ゲームの中身（ひとりのとき・ホストのときに動く）
+// =====================================================================
+let mode = null;      // 'solo' | 'host' | 'client' | null
+let game = null;
+let paused = false;
+
+function makeChar(o) {
+  return Object.assign({
+    x: 0, y: 0, face: Math.PI / 2, state: 'hide', spotted: false, caught: false, out: false,
+    path: [], pathT: 0, target: null, waitT: 0, kicks: 0, moving: false, light: false, poop: 0, thSeen: 0,
+  }, o);
+}
+
+// players: かくれる人間 [{key,name,color,kind:'local'|'remote',peer,faceSrc}]
+// oniP: 鬼をやる人間 {kind,peer,name,faceSrc} か null（CPU の鬼）
+function newSim(seed, diff, players, oniP) {
+  buildMap(seed);
+  const d = DIFF[diff];
+  const hiders = players.map((p) => makeChar(Object.assign({ poop: 1 }, p)));
+  const cpuCount = players.length >= 6 ? 0 : Math.max(1, 4 - players.length);
+  for (let i = 0; i < cpuCount; i++) {
+    hiders.push(makeChar({ key: 'cpu' + i, name: CPU_NAMES[i], color: CPU_COLORS[i], kind: 'cpu', idx: i }));
+  }
+  hiders.forEach((h, i) => {
+    const a = -Math.PI / 2 + (i - (hiders.length - 1) / 2) * 0.45;
+    h.x = HOME.x + Math.cos(a) * 62; h.y = HOME.y + Math.sin(a) * 62;
+    h.face = a;
+  });
+  const oni = {
+    key: 'oni', name: oniP ? oniP.name : 'おに', faceSrc: oniP ? oniP.faceSrc : null,
+    ctrl: oniP ? oniP.kind : 'cpu', peer: oniP ? oniP.peer : null, playerOut: false,
+    x: HOME.x, y: HOME.y - 24, face: Math.PI / 2, look: 0, light: true, stun: 0,
+    state: 'count', t: COUNT_TIME, path: [], pathT: 0, target: null, carrying: false, wait: 0,
+  };
+  const can = { x: HOME.x, y: HOME.y, vx: 0, vy: 0, state: 'home', spin: 0 };
+  const ghosts = [];
+  for (let i = 0; i < d.ghosts; i++) ghosts.push(makeGhost());
+  game = {
+    seed, diff, d, hiders, oni, can, ghosts,
+    localOni: !!oniP && oniP.kind === 'local',
+    time: ROUND_TIME, elapsed: 0, captures: 0, ghostTimer: 0,
+    msg: '', msgT: 0, msgColor: '#fff', msgId: 0, sfxId: 0, sfxName: '',
+    over: false, endReason: null, poops: [],
+  };
+  for (const h of hiders) if (h.kind === 'cpu') chooseHideSpot(h);
+  const me = hiders.find((h) => h.kind === 'local');
+  if (me) { ctl.yaw = Math.atan2(me.y - HOME.y, me.x - HOME.x); ctl.pitch = -0.05; }
+  if (game.localOni) { ctl.yaw = Math.PI / 2; ctl.pitch = -0.1; }
+  ctl.light = false;
+  showMsg(game.localOni ? '目をつぶって10数えよう…' : '鬼が10数えるうちに かくれろ！', '#ffe08a', 2.5);
+  playSfx('start');
+}
+
+function makeGhost() {
+  let x, y;
+  do { x = rand(80, WORLD_W - 80); y = rand(80, WORLD_H - 80); }
+  while (Math.hypot(x - HOME.x, y - HOME.y) < 420);
+  return { x, y, tx: x, ty: y, phase: Math.random() * 10, alpha: 0 };
+}
+
+function showMsg(text, color = '#fff', t = 1.6) { game.msg = text; game.msgColor = color; game.msgT = t; game.msgId++; }
+function playSfx(name) { game.sfxId++; game.sfxName = name; sfx[name](); if (name === 'kick') fxKick(game.can.x, game.can.y); }
+
+// ---------- 鬼 ----------
+// 見える：近くは気配でわかる／ライトの中／ライトをつけている子は遠くからでもわかる
+function oniCanSee(oni, h) {
+  const d = dist(oni, h);
+  if (d < 55) return true;
+  const vis = game.d.vision * (oni.light ? 1 : 0.5);
+  if (h.light && d < game.d.vision * 1.7 && clearLine(oni, h)) return true;
+  if (d > vis) return false;
+  const a = Math.atan2(h.y - oni.y, h.x - oni.x);
+  if (Math.abs(angleDiff(oni.face + oni.look, a)) > CONE) return false;
+  return clearLine(oni, h);
+}
+
+function spotCheck() {
+  const { oni, hiders } = game;
+  for (const h of hiders) {
+    if (h.caught || h.out || h.spotted) continue;
+    if (oniCanSee(oni, h)) {
+      h.spotted = true;
+      if (oni.ctrl === 'cpu') { oni.state = 'return'; oni.target = null; }
+      showMsg(oni.ctrl === 'cpu' ? `${h.name} みーっけ！` : `${h.name} みーっけ！ 缶をふみに戻れ！`, '#ff6b6b', 1.8);
+      playSfx('spot');
+      if (h.kind === 'cpu') { h.state = 'rush'; h.target = null; }
+    }
+  }
+}
+
+function captureSpotted() {
+  let n = 0;
+  for (const h of game.hiders) if (h.spotted && !h.caught && !h.out) { capture(h); n++; }
+  if (n) { showMsg('缶ふんだ！ つかまえた！', '#ff6b6b', 1.6); playSfx('catch'); }
+}
+
+function updateOni(dt) {
+  const { oni } = game;
+  if (oni.stun > 0) {
+    // 金のうんこで動けない
+    oni.stun -= dt; oni.moving = false;
+    if (oni.ctrl === 'remote') readRemoteOni(true);
+    if (oni.stun <= 0) { oni.stun = 0; oni.target = null; showMsg('鬼が動き出した！', '#ff8a7a', 1.6); playSfx('wake'); }
+    return;
+  }
+  if (oni.ctrl === 'cpu') return updateOniCPU(dt);
+  // 人間の鬼
+  oni.look = 0;
+  if (oni.state === 'count') {
+    oni.t -= dt;
+    if (oni.ctrl === 'local') oni.face = ctl.yaw;
+    if (oni.t <= 0) { oni.state = 'search'; showMsg('もういいかい？… さがしにいこう！', '#ff8a7a', 2); }
+    return;
+  }
+  if (oni.ctrl === 'local') {
+    const v = moveInput(dt);
+    moveChar(oni, v.x * ONI_SPEED, v.y * ONI_SPEED, dt, false);
+    oni.face = ctl.yaw; oni.light = ctl.light; oni.moving = !!(v.x || v.y);
+  } else readRemoteOni();
+  if (oni.ctrl === 'cpu') return;
+  spotCheck();
+  const { can } = game;
+  if (can.state === 'home' && dist(oni, HOME) < 34) captureSpotted();
+  if (can.state === 'away' && dist(oni, can) < 28) { oni.carrying = true; can.state = 'carried'; showMsg('缶をひろった！ 元の場所へ', '#ffb37a', 1.6); }
+  if (can.state === 'carried') {
+    can.x = oni.x; can.y = oni.y;
+    if (dist(oni, HOME) < 40) {
+      oni.carrying = false; can.state = 'home'; can.x = HOME.x; can.y = HOME.y;
+      for (const h of game.hiders) h.spotted = false;
+      showMsg('缶をもどした！', '#ffb37a', 1.4);
+    }
+  }
+}
+
+function updateOniCPU(dt) {
+  const { oni, can, hiders, d } = game;
+  oni.look = Math.sin(game.elapsed * 1.7) * 0.45;
+  oni.light = true;
+  oni.moving = !['count', 'recount'].includes(oni.state);
+
+  if (oni.state === 'count') {
+    oni.t -= dt;
+    if (oni.t <= 0) { oni.state = 'search'; oni.target = null; showMsg('もういいかい？… さがすぞー！', '#ff8a7a', 2); }
+    return;
+  }
+  if (oni.state === 'search' || oni.state === 'return' || oni.state === 'guard') spotCheck();
+
+  if (oni.state === 'search') {
+    if (!oni.goal || oni.wait <= 0 && followPath(oni, oni.goal, d.oniSearch, dt)) {
+      if (oni.goal && oni.wait <= 0 && !oni.waited) { oni.wait = rand(0.6, 1.4); oni.waited = true; }
+      else { oni.goal = pickOniGoal(); oni.waited = false; }
+    }
+    if (oni.wait > 0) { oni.wait -= dt; oni.moving = false; }
+    for (const h of hiders) {
+      if (h.caught || h.out) continue;
+      if (dist(h, can) < 110 && dist(oni, can) > 160 && Math.random() < dt * 0.6) { oni.state = 'guard'; oni.target = null; }
+    }
+  } else if (oni.state === 'guard') {
+    if (followPath(oni, HOME, d.oniRun * 0.85, dt)) { oni.state = 'search'; oni.goal = null; }
+  } else if (oni.state === 'return') {
+    if (can.state !== 'home') { oni.state = 'fetch'; oni.target = null; return; }
+    if (followPath(oni, { x: HOME.x, y: HOME.y - 18 }, d.oniRun, dt, 0.3) || dist(oni, HOME) < 26) {
+      captureSpotted();
+      oni.state = 'search'; oni.goal = null;
+    }
+  } else if (oni.state === 'fetch') {
+    if (!oni.carrying) {
+      if (can.state === 'carried') { oni.carrying = true; }
+      else if (can.state === 'away' && (followPath(oni, can, d.oniRun, dt, 0.3) || dist(oni, can) < 20)) { oni.carrying = true; can.state = 'carried'; }
+    } else {
+      can.x = oni.x; can.y = oni.y;
+      if (followPath(oni, { x: HOME.x, y: HOME.y - 20 }, d.oniRun * 0.9, dt)) {
+        oni.carrying = false; can.state = 'home'; can.x = HOME.x; can.y = HOME.y;
+        oni.state = 'recount'; oni.t = 3;
+        for (const h of hiders) h.spotted = false;
+        showMsg('缶をもどした… 3・2・1', '#ffb37a', 2);
+      }
+    }
+  } else if (oni.state === 'recount') {
+    for (const h of hiders) {
+      if (!h.caught && !h.out && dist(h, HOME) < 90) { capture(h); showMsg(`${h.name} 缶のそばで見っけ！`, '#ff6b6b', 1.6); playSfx('catch'); }
+    }
+    oni.t -= dt;
+    if (oni.t <= 0) { oni.state = 'search'; oni.goal = null; }
+  }
+}
+
+// 人間の鬼がいなくなったら CPU が交代する
+function oniTakeover(text) {
+  const { oni, can } = game;
+  oni.ctrl = 'cpu';
+  oni.name = 'おに';
+  oni.faceSrc = null;
+  oni.target = null; oni.goal = null;
+  if (oni.state === 'count') { /* そのまま数える */ }
+  else if (can.state === 'away' || can.state === 'carried') { oni.state = 'fetch'; }
+  else if (game.hiders.some((h) => h.spotted)) oni.state = 'return';
+  else oni.state = 'search';
+  showMsg(text, '#cfe8ff', 2);
+}
+
+function pickOniGoal() {
+  const reach = 260 + Math.min(320, game.elapsed * 4);
+  for (let k = 0; k < 30; k++) {
+    const a = Math.random() * Math.PI * 2, r = rand(120, reach);
+    const p = { x: HOME.x + Math.cos(a) * r, y: HOME.y + Math.sin(a) * r };
+    if (p.x < 60 || p.y < 60 || p.x > WORLD_W - 60 || p.y > WORLD_H - 60) continue;
+    if (isFreePoint(p)) return p;
+  }
+  return { x: HOME.x + 100, y: HOME.y };
+}
+
+function capture(h) {
+  h.caught = true; h.spotted = false; h.state = 'caught'; h.path = [];
+  game.captures++;
+  placeInJail();
+}
+function placeInJail() {
+  const jailed = game.hiders.filter((h) => h.caught);
+  const n = jailed.length, gap = Math.min(46, 180 / Math.max(1, n));
+  jailed.forEach((h, i) => { h.x = HOME.x - (n - 1) * gap / 2 + i * gap; h.y = HOME.y + 80; });
+}
+
+// ---------- 缶 ----------
+function updateCan(dt) {
+  const { can, hiders, oni } = game;
+  if (can.state === 'home') {
+    if (oni.state === 'count') return;
+    for (const h of hiders) {
+      if (h.caught || h.out) continue;
+      if (dist(h, can) < R + 12) { kickCan(h); break; }
+    }
+  } else if (can.state === 'flying') {
+    can.x += can.vx * dt; can.y += can.vy * dt;
+    can.spin += dt * 20;
+    const f = Math.pow(0.12, dt);
+    can.vx *= f; can.vy *= f;
+    const tmp = { x: can.x, y: can.y };
+    for (const o of obstacles) {
+      const bx = tmp.x, by = tmp.y;
+      circleRectPush(tmp, o, 6);
+      if (tmp.x !== bx) can.vx *= -0.6;
+      if (tmp.y !== by) can.vy *= -0.6;
+    }
+    can.x = tmp.x; can.y = tmp.y;
+    if (Math.hypot(can.vx, can.vy) < 12) {
+      can.state = 'away';
+      if (!isFreePoint(can)) { const c = nearestFree(toCell(can)); can.x = c.i * CELL + CELL / 2; can.y = c.j * CELL + CELL / 2; }
+    }
+  }
+}
+
+function kickCan(h) {
+  const { can, hiders, oni } = game;
+  let dx = can.x - h.x, dy = can.y - h.y; const l = Math.hypot(dx, dy) || 1;
+  dx /= l; dy /= l;
+  const sp = rand(520, 640);
+  can.vx = dx * sp + rand(-60, 60); can.vy = dy * sp + rand(-60, 60);
+  can.state = 'flying';
+  h.kicks++;
+  let freed = 0;
+  for (const o of hiders) {
+    o.spotted = false;
+    if (o.caught) {
+      o.caught = false; freed++;
+      o.state = o.kind === 'cpu' ? 'flee' : 'hide';
+      if (o.kind === 'cpu') chooseHideSpot(o);
+    }
+  }
+  oni.carrying = false; oni.target = null;
+  if (oni.ctrl === 'cpu') oni.state = 'fetch';
+  showMsg(`カーン！！ ${h.name}が缶を蹴った${freed ? `（${freed}人にげた）` : ''}`, '#8ef0ff', 2.2);
+  playSfx('kick');
+}
+
+// ---------- CPU の子 ----------
+function chooseHideSpot(h) {
+  const graves = obstacles.filter((o) => o.kind === 'grave' || o.kind === 'tree');
+  for (let k = 0; k < 40; k++) {
+    const o = graves[Math.random() * graves.length | 0];
+    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+    const dd = Math.hypot(cx - HOME.x, cy - HOME.y);
+    if (dd < 260 || dd > 620) continue;
+    const nx = (cx - HOME.x) / dd, ny = (cy - HOME.y) / dd;
+    const p = { x: cx + nx * (Math.max(o.w, o.h) / 2 + R + 6), y: cy + ny * (Math.max(o.w, o.h) / 2 + R + 6) };
+    if (!isFreePoint(p)) continue;
+    if (game.ghosts.some((g) => Math.hypot(g.x - p.x, g.y - p.y) < 160)) continue;
+    h.goal = p; h.target = null; h.state = h.state === 'flee' ? 'flee' : 'hide';
+    return;
+  }
+  h.goal = { x: HOME.x + rand(-400, 400), y: HOME.y + rand(-300, 300) };
+}
+
+function nearestGhost(p) {
+  let best = null, bd = Infinity;
+  for (const g of game.ghosts) { const d = Math.hypot(g.x - p.x, g.y - p.y); if (d < bd) { bd = d; best = g; } }
+  return { g: best, d: bd };
+}
+
+function updateCPU(h, dt) {
+  if (h.caught || h.out) { h.moving = false; return; }
+  const { oni, can } = game;
+  const speed = 128;
+  h.moving = true;
+
+  const ng = nearestGhost(h);
+  if (ng.g && ng.d < 95 && h.state !== 'rush') {
+    const dx = h.x - ng.g.x, dy = h.y - ng.g.y, l = Math.hypot(dx, dy) || 1;
+    moveChar(h, dx / l * speed, dy / l * speed, dt);
+    h.target = null;
+    if (h.state === 'wait') { h.state = 'hide'; chooseHideSpot(h); }
+    return;
+  }
+  if (h.state === 'rush') {
+    if (can.state !== 'home') { h.state = 'flee'; chooseHideSpot(h); return; }
+    followPath(h, can, speed * 1.12, dt, 0.25);
+    return;
+  }
+  if (h.state === 'hide' || h.state === 'flee') {
+    if (!h.goal) chooseHideSpot(h);
+    if (followPath(h, h.goal, h.state === 'flee' ? speed * 1.1 : speed, dt)) {
+      h.state = 'wait'; h.waitT = rand(4, 10);
+      h.face = Math.atan2(HOME.y - h.y, HOME.x - h.x); // 缶のほうをのぞく
+    }
+    return;
+  }
+  if (h.state === 'wait') {
+    h.moving = false;
+    h.waitT -= dt;
+    const searching = oni.state === 'search' || oni.state === 'recount';
+    const oniFar = dist(oni, can) > 330 && dist(h, can) < dist(oni, can) - 60;
+    if (can.state === 'home' && (oni.stun > 0 || (searching && oniFar)) && h.waitT <= 0) {
+      if (Math.random() < 0.5) { h.state = 'rush'; h.target = null; return; }
+      h.waitT = rand(2, 5);
+    }
+    if (dist(oni, h) < 170 && searching && Math.random() < dt * 0.8) { h.state = 'flee'; chooseHideSpot(h); }
+    if (h.waitT < -8) { h.state = 'hide'; chooseHideSpot(h); }
+  }
+}
+
+// ---------- お化け ----------
+function updateGhosts(dt) {
+  const { ghosts, d, oni } = game;
+  game.ghostTimer += dt;
+  if (game.ghostTimer > d.addGhostEvery) {
+    game.ghostTimer = 0; ghosts.push(makeGhost());
+    showMsg('どこかで…お化けがふえた', '#cfe8ff', 1.6);
+  }
+  const humanOni = oni.ctrl !== 'cpu' && !oni.playerOut;
+  for (const g of ghosts) {
+    g.phase += dt;
+    g.alpha = Math.min(1, g.alpha + dt * 0.5);
+    let tgt = null;
+    for (const h of game.hiders) {
+      if (h.caught || h.out) continue;
+      if (Math.hypot(h.x - g.x, h.y - g.y) < 200) { tgt = h; break; }
+    }
+    if (!tgt && humanOni && dist(oni, g) < 200) tgt = oni;
+    if (tgt && Math.sin(g.phase * 0.7) > 0.2) { g.tx = tgt.x; g.ty = tgt.y; }
+    else if (Math.hypot(g.tx - g.x, g.ty - g.y) < 20) {
+      for (let k = 0; k < 10; k++) {
+        g.tx = rand(60, WORLD_W - 60); g.ty = rand(60, WORLD_H - 60);
+        if (Math.hypot(g.tx - g.x, g.ty - g.y) < 600) break;
+      }
+    }
+    const dx = g.tx - g.x, dy = g.ty - g.y, l = Math.hypot(dx, dy) || 1;
+    const sp = d.ghostSpeed * (0.8 + 0.3 * Math.sin(g.phase * 1.3));
+    g.x += (dx / l) * sp * dt + Math.cos(g.phase * 2.1) * 12 * dt;
+    g.y += (dy / l) * sp * dt + Math.sin(g.phase * 1.7) * 12 * dt;
+    const hd = Math.hypot(g.x - HOME.x, g.y - HOME.y);
+    if (hd < SAFE_R + 18) {
+      const k = (SAFE_R + 18) / hd; g.x = HOME.x + (g.x - HOME.x) * k; g.y = HOME.y + (g.y - HOME.y) * k;
+      g.tx = g.x + (g.x - HOME.x); g.ty = g.y + (g.y - HOME.y);
+    }
+    g.x = clamp(g.x, 40, WORLD_W - 40); g.y = clamp(g.y, 40, WORLD_H - 40);
+    if (g.alpha < 0.6) continue;
+    for (const h of game.hiders) {
+      if (h.caught || h.out) continue;
+      if (Math.hypot(h.x - g.x, h.y - g.y) < R + 16) spirit(h);
+    }
+    if (oni.ctrl !== 'cpu' && !oni.playerOut && oni.state !== 'count' && Math.hypot(oni.x - g.x, oni.y - g.y) < R + 16) spiritOni();
+  }
+}
+
+// ---------- 金のうんこ ----------
+const POOP_SPEED = 470, POOP_RANGE = 520, STUN_TIME = 20;
+function throwPoop(h) {
+  if (!h || h.poop <= 0 || h.caught || h.out) return;
+  h.poop--;
+  const c = Math.cos(h.face), sn = Math.sin(h.face);
+  game.poops.push({ x: h.x + c * 18, y: h.y + sn * 18, vx: c * POOP_SPEED, vy: sn * POOP_SPEED, d: 0, landed: false, t: 0, by: h.name });
+  playSfx('toss');
+}
+function updatePoops(dt) {
+  const { oni } = game;
+  for (const p of game.poops) {
+    if (p.landed) { p.t += dt; continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.d += POOP_SPEED * dt;
+    if (oni.state !== 'count' && oni.stun <= 0 && Math.hypot(oni.x - p.x, oni.y - p.y) < 36) {
+      oni.stun = STUN_TIME; oni.moving = false; oni.carrying = oni.carrying && game.can.state === 'carried';
+      p.hit = true; p.landed = true; p.t = 99;
+      showMsg(`💩 ${p.by}の金のうんこが命中！ 鬼は${STUN_TIME}秒動けない！`, '#ffd34a', 2.6);
+      playSfx('splat');
+      continue;
+    }
+    let hitWall = p.d > POOP_RANGE || p.x < 30 || p.y < 30 || p.x > WORLD_W - 30 || p.y > WORLD_H - 30;
+    for (const o of obstacles) if (o.kind !== 'wall' && p.x > o.x && p.x < o.x + o.w && p.y > o.y && p.y < o.y + o.h) { hitWall = true; break; }
+    if (hitWall) { p.landed = true; p.t = 0; }
+  }
+  game.poops = game.poops.filter((p) => !(p.landed && p.t > 2.5));
+}
+
+function spirit(h) {
+  h.out = true; h.spotted = false; h.state = 'out';
+  playSfx('ghost');
+  if (h.kind !== 'local') showMsg(`${h.name}がお化けにつれていかれた…`, '#cfe8ff', 1.8);
+  else onLocalDeath();
+}
+function spiritOni() {
+  const { oni } = game;
+  oni.playerOut = true;
+  const wasLocal = oni.ctrl === 'local';
+  playSfx('ghost');
+  oniTakeover(`鬼の${oni.name}がお化けに… CPU の鬼が交代！`);
+  if (wasLocal) onLocalDeath();
+}
+
+// ホスト（とひとり）用の 1 フレーム
+function simUpdate(dt) {
+  if (!game || game.over) return;
+  game.elapsed += dt;
+  if (game.oni.state !== 'count') game.time -= dt;
+  if (game.msgT > 0) game.msgT -= dt;
+
+  for (const h of game.hiders) {
+    if (h.kind === 'local') {
+      h.face = ctl.yaw; h.light = ctl.light && !h.out;
+      if (!h.caught && !h.out) {
+        const v = moveInput(dt);
+        moveChar(h, v.x * SPEED, v.y * SPEED, dt, false);
+        h.moving = !!(v.x || v.y);
+      } else h.moving = false;
+    } else if (h.kind === 'remote') {
+      readRemote(h);
+    }
+  }
+  for (const h of game.hiders) if (h.kind === 'cpu') updateCPU(h, dt);
+  updateOni(dt);
+  updateCan(dt);
+  updateGhosts(dt);
+  updatePoops(dt);
+
+  const alive = game.hiders.filter((h) => !h.caught && !h.out);
+  if (alive.length === 0 && game.can.state === 'home') return endSim('oni');
+  if (game.time <= 0) return endSim('time');
+}
+
+function endSim(reason) {
+  game.over = true; game.endReason = reason;
+  const free = game.hiders.filter((h) => !h.caught && !h.out).length;
+  if (mode === 'host') netSendNow();
+  if (game.localOni) showResult(reason, game.oni.playerOut ? 3 : 0, free, 0, myName(), 'oni');
+  else {
+    const me = game.hiders.find((h) => h.kind === 'local');
+    showResult(reason, stCode(me), free, me.kicks, me.name, 'hider');
+  }
+}
+
+function stCode(h) { return h.out ? 3 : h.caught ? 2 : h.spotted ? 1 : 0; }
+
+// =====================================================================
+//  表示用のまとめ（ひとり・ホストはシミュレーションから、クライアントは通信から作る）
+// =====================================================================
+const view = {
+  kids: [],
+  oni: { key: 'oni', name: 'おに', x: HOME.x, y: HOME.y, fa: 0, look: 0, st: 0, t: 10, light: true, isMe: false, out: false },
+  can: { x: HOME.x, y: HOME.y, st: 0, spin: 0 },
+  ghosts: [],
+  time: ROUND_TIME, myKicks: 0, myPoop: 0, poops: [], msg: '', msgColor: '#fff', msgT: 0, vision: DIFF[1].vision,
+};
+
+function viewFromSim() {
+  const g = game;
+  view.kids = g.hiders.map((h) => ({
+    key: h.key, name: h.name, color: h.color, faceSrc: h.faceSrc || null, kind: h.kind,
+    x: h.x, y: h.y, fa: h.face, moving: h.moving, st: stCode(h), isMe: h.kind === 'local', light: h.light,
+  }));
+  const o = g.oni;
+  view.oni = { key: 'oni', name: o.name, faceSrc: o.faceSrc, x: o.x, y: o.y, fa: o.face, look: o.look,
+    st: ONI_CODE[o.state] ?? 1, t: o.t, light: o.light && !(o.stun > 0), moving: o.moving, stun: o.stun,
+    isMe: g.localOni && o.ctrl === 'local', meOut: g.localOni && o.playerOut, human: o.ctrl !== 'cpu' };
+  view.can = { x: g.can.x, y: g.can.y, st: CAN_CODE[g.can.state], spin: g.can.spin };
+  view.ghosts = g.ghosts.map((q) => ({ x: q.x, y: q.y }));
+  view.time = g.time;
+  view.vision = g.d.vision;
+  const me = g.hiders.find((h) => h.kind === 'local');
+  view.myKicks = me ? me.kicks : 0;
+  view.myPoop = me ? me.poop : 0;
+  view.poops = g.poops.map((p) => ({ x: p.x, y: p.y, f: p.landed ? 1 : 0, d: p.d, t: p.t, hit: !!p.hit }));
+  view.msg = g.msg; view.msgColor = g.msgColor; view.msgT = g.msgT;
+}
+function myViewState() {
+  if (view.oni.isMe || view.oni.meOut) return { role: 'oni', st: view.oni.meOut ? 3 : 0, me: view.oni };
+  const me = view.kids.find((k) => k.isMe);
+  return { role: 'hider', st: me ? me.st : 3, me };
+}
+
+// =====================================================================
+//  3D 表示（一人称）
+// =====================================================================
+let renderer, scene, camera, world = null;
+let myLight, myGlow, canLight, oniSpot, oniSpotTarget, myLightTarget, handLamp, handBulb;
+const kidMeshes = new Map();
+let oniMesh = null, canMesh = null, ghostMeshes = [], souls = [], sparks = null, poopMeshes = [];
+const texCache = new Map();
+const keepTex = new WeakSet();
+let has3D = true;
+
+function initThree() {
+  if (!window.THREE) { has3D = false; return; }
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  } catch (e) { has3D = false; return; }
+  renderer.setPixelRatio(Math.min(1.75, window.devicePixelRatio || 1));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05060d);
+  scene.fog = new THREE.Fog(0x05060d, 3, 21);
+  camera = new THREE.PerspectiveCamera(72, 1, 0.05, 120);
+  camera.rotation.order = 'YXZ';
+  scene.add(camera);
+
+  scene.add(new THREE.HemisphereLight(0x3a4688, 0x0d0b06, 0.3));
+  const moon = new THREE.DirectionalLight(0x8a98ff, 0.16);
+  moon.position.set(-10, 20, -6);
+  scene.add(moon);
+  // 自分のまわりのほんのり明かり（目がなれた感じ）
+  myGlow = new THREE.PointLight(0x9aa6ff, 0.45, 4.5, 1.5);
+  scene.add(myGlow);
+  // 自分の懐中電灯
+  myLight = new THREE.SpotLight(0xfff2d0, 0, 17, 0.48, 0.55, 1.1);
+  myLightTarget = new THREE.Object3D();
+  scene.add(myLight, myLightTarget);
+  myLight.target = myLightTarget;
+  // 手に持った懐中電灯
+  handLamp = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, 0.16, 10), new THREE.MeshBasicMaterial({ color: 0x1b1d24 }));
+  body.rotation.x = Math.PI / 2;
+  handBulb = new THREE.Mesh(new THREE.CircleGeometry(0.02, 12), new THREE.MeshBasicMaterial({ color: 0x333333 }));
+  handBulb.position.z = -0.081;
+  handBulb.rotation.y = Math.PI;
+  handLamp.add(body, handBulb);
+  handLamp.position.set(0.17, -0.15, -0.42);
+  handLamp.rotation.set(0.08, 0.12, 0);
+  camera.add(handLamp);
+
+  canLight = new THREE.PointLight(0xff9a50, 1.8, 9, 1.3);
+  canLight.position.set(HOME.x * U, 2.6, HOME.y * U);
+  scene.add(canLight);
+  oniSpot = new THREE.SpotLight(0xfff0b8, 3.2, 10, CONE, 0.4, 1);
+  oniSpot.castShadow = true;
+  oniSpot.shadow.mapSize.set(1024, 1024);
+  oniSpot.shadow.camera.near = 0.3;
+  oniSpot.shadow.camera.far = 12;
+  oniSpot.shadow.bias = -0.002;
+  oniSpotTarget = new THREE.Object3D();
+  scene.add(oniSpot, oniSpotTarget);
+  oniSpot.target = oniSpotTarget;
+
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 3), 3));
+  sparks = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffe7a0, size: 0.06, transparent: true, opacity: 0 }));
+  sparks.userData = { v: new Float32Array(24 * 3), t: 0 };
+  sparks.frustumCulled = false;
+  scene.add(sparks);
+}
+
+function mat(color, extra = {}) { return new THREE.MeshLambertMaterial(Object.assign({ color }, extra)); }
+function canvasTex(c) { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return t; }
+
+function disposeTree(o) {
+  o.traverse((n) => {
+    if (n.geometry && !n.userData.keepGeo) n.geometry.dispose();
+    if (n.material) (Array.isArray(n.material) ? n.material : [n.material]).forEach((m) => {
+      if (m.userData.keep) return;
+      if (m.map && !keepTex.has(m.map)) m.map.dispose();
+      m.dispose();
+    });
+  });
+}
+
+function buildWorld() {
+  if (!has3D) return;
+  if (world) { scene.remove(world); disposeTree(world); }
+  for (const m of kidMeshes.values()) { scene.remove(m.group); disposeTree(m.group); }
+  kidMeshes.clear();
+  for (const g of ghostMeshes) { scene.remove(g); disposeTree(g); }
+  ghostMeshes = [];
+  for (const pm of poopMeshes) { scene.remove(pm); disposeTree(pm); }
+  poopMeshes = [];
+  for (const s of souls) scene.remove(s.sprite);
+  souls = [];
+  world = new THREE.Group();
+  scene.add(world);
+
+  const gc = document.createElement('canvas');
+  gc.width = 2048; gc.height = Math.round(2048 * WORLD_H / WORLD_W);
+  drawGround(gc);
+  const gtex = canvasTex(gc);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W * U, WORLD_H * U), mat(0xffffff, { map: gtex }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(WORLD_W * U / 2, 0, WORLD_H * U / 2);
+  ground.receiveShadow = true;
+  world.add(ground);
+  const outer = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), mat(0x0d120b));
+  outer.rotation.x = -Math.PI / 2; outer.position.set(WORLD_W * U / 2, -0.02, WORLD_H * U / 2);
+  world.add(outer);
+
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const graves = obstacles.filter((o) => o.kind === 'grave');
+  const trees = obstacles.filter((o) => o.kind === 'tree');
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color();
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  // 墓石（台座・石・文字の溝）
+  if (graves.length) {
+    const base = new THREE.InstancedMesh(box, mat(0xffffff), graves.length);
+    const stone = new THREE.InstancedMesh(box, mat(0xffffff), graves.length);
+    const groove = new THREE.InstancedMesh(box, mat(0x2a2c36), graves.length);
+    graves.forEach((o, i) => {
+      const cx = (o.x + o.w / 2) * U, cz = (o.y + o.h / 2) * U, w = o.w * U, d = o.h * U;
+      m4.compose(V3(cx, 0.17, cz), q.identity(), V3(w, 0.34, d));
+      base.setMatrixAt(i, m4);
+      base.setColorAt(i, col.setHSL(0.64, 0.05, 0.36 + o.tint));
+      const sw = w * 0.5, sd = d * 0.55, sh = o.tall;
+      m4.compose(V3(cx, 0.34 + sh / 2, cz - d * 0.12), q.identity(), V3(sw, sh, sd));
+      stone.setMatrixAt(i, m4);
+      stone.setColorAt(i, col.setHSL(0.63, 0.06, 0.5 + o.tint));
+      m4.compose(V3(cx, 0.34 + sh * 0.55, cz - d * 0.12 + sd / 2 + 0.005), q.identity(), V3(0.09, sh * 0.6, 0.01));
+      groove.setMatrixAt(i, m4);
+    });
+    for (const m of [base, stone]) { m.castShadow = true; m.receiveShadow = true; m.instanceColor.needsUpdate = true; }
+    world.add(base, stone, groove);
+  }
+  const sotobas = [];
+  for (const dc of decor) if (dc.kind === 'sotoba') for (let i = 0; i < dc.n; i++) sotobas.push({ x: dc.x + i * 4, y: dc.y - 6, h: 1.7 - i * 0.12, r: (i - 1) * 0.06 });
+  if (sotobas.length) {
+    const sm = new THREE.InstancedMesh(box, mat(0xb9a98a), sotobas.length);
+    sotobas.forEach((s, i) => {
+      q.setFromEuler(e.set(0, 0, s.r));
+      m4.compose(V3(s.x * U, s.h / 2, s.y * U), q, V3(0.09, s.h, 0.02));
+      sm.setMatrixAt(i, m4);
+    });
+    sm.castShadow = true;
+    world.add(sm);
+  }
+  const flowers = decor.filter((d) => d.kind === 'flower');
+  if (flowers.length) {
+    const fm = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 6, 4), mat(0xffffff, { emissive: 0x220a0a }), flowers.length);
+    const fcol = [0xd94a4a, 0xf2f2f2, 0xe8c547];
+    flowers.forEach((f, i) => {
+      m4.compose(V3(f.x * U, 0.25, f.y * U), q.identity(), V3(1, 1, 1));
+      fm.setMatrixAt(i, m4); fm.setColorAt(i, col.set(fcol[f.c]));
+    });
+    fm.instanceColor.needsUpdate = true;
+    world.add(fm);
+  }
+  if (trees.length) {
+    const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.18, 1, 6), mat(0x3b2a1e), trees.length);
+    const leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat(0x1f3322, { flatShading: true }), trees.length * 2);
+    trees.forEach((o, i) => {
+      const cx = (o.x + o.w / 2) * U, cz = (o.y + o.h / 2) * U, s = o.w * U, t = o.tall;
+      m4.compose(V3(cx, 0.8 * t, cz), q.identity(), V3(1, 1.6 * t, 1));
+      trunk.setMatrixAt(i, m4);
+      m4.compose(V3(cx, 2.0 * t, cz), q.setFromEuler(e.set(0, i, 0)), V3(s * 0.85, s * 0.75 * t, s * 0.85));
+      leaf.setMatrixAt(i * 2, m4);
+      m4.compose(V3(cx - 0.15, 2.7 * t, cz + 0.1), q.setFromEuler(e.set(0, i * 2, 0)), V3(s * 0.55, s * 0.5, s * 0.55));
+      leaf.setMatrixAt(i * 2 + 1, m4);
+    });
+    trunk.castShadow = leaf.castShadow = true;
+    world.add(trunk, leaf);
+  }
+  for (const o of obstacles) {
+    const cx = (o.x + o.w / 2) * U, cz = (o.y + o.h / 2) * U;
+    if (o.kind === 'lantern') {
+      const g = new THREE.Group();
+      const stoneM = mat(0x6d6e74);
+      const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.6), stoneM); b1.position.y = 0.1;
+      const b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.7, 6), stoneM); b2.position.y = 0.55;
+      const b3 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.32, 0.4), mat(0x6d6e74, { emissive: 0x7a4c12 })); b3.position.y = 1.06;
+      const b4 = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.32, 4), stoneM); b4.position.y = 1.38; b4.rotation.y = Math.PI / 4;
+      g.add(b1, b2, b3, b4);
+      g.traverse((n) => { n.castShadow = true; });
+      g.position.set(cx, 0, cz);
+      world.add(g);
+    } else if (o.kind === 'well') {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.8, 0.6, 14, 1, true), mat(0x55575e, { side: THREE.DoubleSide }));
+      ring.position.set(cx, 0.3, cz);
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.72, 14), mat(0x020306));
+      hole.rotation.x = -Math.PI / 2; hole.position.set(cx, 0.05, cz);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.3), mat(0x3b2a1e)); roof.position.set(cx, 1.6, cz);
+      const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.6, 0.1), mat(0x3b2a1e)); p1.position.set(cx - 0.8, 0.8, cz);
+      const p2 = p1.clone(); p2.position.x = cx + 0.8;
+      world.add(ring, hole, roof, p1, p2);
+    } else if (o.kind === 'wall') {
+      const w = new THREE.Mesh(box, mat(0x2b2622));
+      w.scale.set(o.w * U, 1.6, o.h * U);
+      w.position.set(cx, 0.8, cz);
+      world.add(w);
+    } else if (o.kind === 'pole') {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), mat(0x3b2a1e));
+      pole.position.set(cx, 1.3, cz);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.05), mat(0x3b2a1e));
+      arm.position.set(cx - 0.3, 2.55, cz);
+      const chochin = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff5a36, fog: false }));
+      chochin.scale.set(1, 1.35, 1);
+      chochin.position.set(cx - 0.55, 2.15, cz);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.06, 10), mat(0x111111));
+      band.position.set(cx - 0.55, 2.55, cz);
+      world.add(pole, arm, chochin, band);
+      canLight.position.set(cx - 0.55, 2.2, cz);
+    }
+  }
+  {
+    const red = mat(0xb8321f);
+    const g = new THREE.Group();
+    for (const s of [-1, 1]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 3, 10), red);
+      p.position.set(s * 1.75, 1.5, 0); g.add(p);
+    }
+    const kasagi = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.22, 0.32), mat(0x1a1a1a)); kasagi.position.y = 3.05;
+    const shimaki = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.16, 0.26), red); shimaki.position.y = 2.85;
+    const nuki = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.14, 0.18), red); nuki.position.y = 2.35;
+    g.add(kasagi, shimaki, nuki);
+    g.traverse((n) => { n.castShadow = true; });
+    g.position.set(HOME.x * U, 0, 70 * U);
+    world.add(g);
+  }
+  for (const [dx, dy] of [[-100, 52], [100, 52], [-100, 108], [100, 108]]) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.6, 6), mat(0x8a6a44));
+    p.position.set((HOME.x + dx) * U, 0.3, (HOME.y + dy) * U);
+    world.add(p);
+  }
+
+  oniMesh = makeOniMesh();
+  world.add(oniMesh.group);
+  canMesh = makeCanMesh();
+  world.add(canMesh);
+}
+
+function drawGround(c) {
+  const g = c.getContext('2d');
+  const s = c.width / WORLD_W;
+  g.scale(s, s);
+  g.fillStyle = '#2a3523';
+  g.fillRect(0, 0, WORLD_W, WORLD_H);
+  for (let i = 0; i < 5000; i++) {
+    g.fillStyle = Math.random() < 0.5 ? 'rgba(70,95,50,.35)' : 'rgba(15,20,12,.35)';
+    g.fillRect(Math.random() * WORLD_W, Math.random() * WORLD_H, rand(2, 7), rand(2, 7));
+  }
+  g.fillStyle = '#4a463d';
+  g.beginPath(); g.arc(HOME.x, HOME.y, 175, 0, Math.PI * 2); g.fill();
+  g.fillRect(HOME.x - 40, 30, 80, WORLD_H - 60);
+  g.fillRect(30, HOME.y - 40, WORLD_W - 60, 80);
+  for (let i = 0; i < 6000; i++) {
+    g.fillStyle = Math.random() < 0.5 ? 'rgba(140,135,120,.45)' : 'rgba(30,28,24,.45)';
+    const a = Math.random() * Math.PI * 2, d = Math.random() * 175;
+    g.fillRect(HOME.x + Math.cos(a) * d, HOME.y + Math.sin(a) * d, 2.5, 2.5);
+    g.fillRect(HOME.x - 40 + Math.random() * 80, 30 + Math.random() * (WORLD_H - 60), 2.5, 2.5);
+    g.fillRect(30 + Math.random() * (WORLD_W - 60), HOME.y - 40 + Math.random() * 80, 2.5, 2.5);
+  }
+  g.strokeStyle = 'rgba(230,210,170,.6)'; g.setLineDash([12, 8]); g.lineWidth = 4;
+  g.strokeRect(HOME.x - 100, HOME.y + 52, 200, 56);
+  g.setLineDash([]);
+  g.fillStyle = 'rgba(240,225,190,.55)'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center';
+  g.fillText('ろうや', HOME.x, HOME.y + 134);
+  g.strokeStyle = 'rgba(255,190,90,.35)'; g.lineWidth = 5;
+  g.beginPath(); g.arc(HOME.x, HOME.y, SAFE_R, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = 'rgba(0,0,0,.28)';
+  for (const o of obstacles) if (o.kind === 'grave') g.fillRect(o.x - 3, o.y - 3, o.w + 6, o.h + 8);
+}
+
+// 顔のテクスチャ（丸く切り抜いて、色のふちをつける）
+function faceTexture(img, color, isOni) {
+  const key = (img ? img.src.length + img.src.slice(-40) : 'none') + color + (isOni ? 'oni' : '');
+  if (texCache.has(key)) return texCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const r = 118;
+  g.save();
+  g.beginPath(); g.arc(128, 128, r, 0, Math.PI * 2);
+  g.fillStyle = isOni ? '#e2584a' : '#f6d7b0'; g.fill();
+  g.clip();
+  if (img) {
+    g.drawImage(img, 128 - r, 128 - r, r * 2, r * 2);
+  } else if (isOni) {
+    g.fillStyle = '#2b0b06';
+    g.beginPath(); g.ellipse(88, 128, 16, 20, 0, 0, Math.PI * 2); g.ellipse(168, 128, 16, 20, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#2b0b06'; g.lineWidth = 10; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(62, 92); g.lineTo(110, 108); g.moveTo(194, 92); g.lineTo(146, 108); g.stroke();
+    g.fillStyle = '#2b0b06'; g.beginPath(); g.arc(128, 180, 34, 0, Math.PI); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(104, 180); g.lineTo(112, 198); g.lineTo(120, 180); g.moveTo(136, 180); g.lineTo(144, 198); g.lineTo(152, 180); g.fill();
+  } else {
+    g.fillStyle = '#3a2618';
+    g.beginPath(); g.arc(128, 70, 128, Math.PI * 1.02, Math.PI * 1.98); g.fill();
+    g.fillRect(0, 0, 256, 60);
+    g.fillStyle = '#2a1b10';
+    g.beginPath(); g.arc(88, 138, 13, 0, Math.PI * 2); g.arc(168, 138, 13, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(255,120,120,.35)';
+    g.beginPath(); g.arc(66, 172, 18, 0, Math.PI * 2); g.arc(190, 172, 18, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#2a1b10'; g.lineWidth = 7; g.lineCap = 'round';
+    g.beginPath(); g.arc(128, 168, 26, 0.2 * Math.PI, 0.8 * Math.PI); g.stroke();
+  }
+  g.restore();
+  g.lineWidth = 14; g.strokeStyle = color;
+  g.beginPath(); g.arc(128, 128, r, 0, Math.PI * 2); g.stroke();
+  const t = canvasTex(c); keepTex.add(t);
+  texCache.set(key, t);
+  return t;
+}
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function textSprite(text, color = '#ffffff', bg = 'rgba(0,0,0,.55)', w = 512, h = 96, font = 'bold 54px sans-serif') {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(c), transparent: true, depthWrite: false, fog: false }));
+  sp.userData.draw = (t, col = color) => {
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, w, h);
+    g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (bg && t) { const tw = Math.min(w, g.measureText(t).width + 36); g.fillStyle = bg; roundRect(g, (w - tw) / 2, 8, tw, h - 16, (h - 16) / 2); g.fill(); }
+    if (!bg) { g.lineWidth = 10; g.strokeStyle = 'rgba(0,0,0,.65)'; g.strokeText(t, w / 2, h / 2 + 2); }
+    g.fillStyle = col; g.fillText(t, w / 2, h / 2 + 2);
+    sp.material.map.needsUpdate = true;
+  };
+  sp.userData.draw(text);
+  return sp;
+}
+
+let glowTex = null;
+function getGlowTex() {
+  if (!glowTex) {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d'); const gr = g.createRadialGradient(64, 64, 2, 64, 64, 62);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    glowTex = new THREE.CanvasTexture(c); keepTex.add(glowTex);
+  }
+  return glowTex;
+}
+function glowSprite(color, size, opacity) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTex(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity, fog: false }));
+  s.scale.set(size, size, 1);
+  return s;
+}
+// 懐中電灯の光のすじ（遠くからでも見える）
+function beamMesh(len, angle, opacity) {
+  const geo = new THREE.ConeGeometry(Math.tan(angle) * len, len, 24, 1, true);
+  geo.translate(0, -len / 2, 0);
+  geo.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false }));
+  const pivot = new THREE.Group();
+  pivot.rotation.order = 'YXZ';
+  pivot.add(m);
+  const lamp = glowSprite(0xfff0c0, 0.7, 0.9);
+  pivot.add(lamp);
+  return pivot;
+}
+
+// キャラ：体の上に、大きな顔（いつもこちらを向く）
+function makeKidMesh(color) {
+  const group = new THREE.Group();
+  const body = new THREE.Group();
+  group.add(body);
+  const cm = mat(color);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.34, 0.62, 12), cm);
+  torso.position.y = 0.62; torso.castShadow = true;
+  const legM = mat(0x2c2c3a);
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.36, 0.13), legM);
+  legL.geometry.translate(0, -0.18, 0);
+  const legR = legL.clone(); legR.userData.keepGeo = true;
+  legL.position.set(-0.11, 0.36, 0); legR.position.set(0.11, 0.36, 0);
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.36, 0.1), cm);
+  armL.geometry.translate(0, -0.16, 0);
+  const armR = armL.clone(); armR.userData.keepGeo = true;
+  armL.position.set(-0.33, 0.86, 0); armR.position.set(0.33, 0.86, 0);
+  body.add(torso, legL, legR, armL, armR);
+  const rope = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.04, 6, 16), mat(0xc9a46b));
+  rope.rotation.x = Math.PI / 2; rope.position.y = 0.66; rope.visible = false;
+  group.add(rope);
+  const head = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffffff, transparent: true }));
+  head.scale.set(1.0, 1.0, 1);
+  head.position.y = 1.42;
+  group.add(head);
+  const name = textSprite('');
+  name.scale.set(1.4, 0.26, 1); name.position.y = 2.1;
+  group.add(name);
+  const excl = textSprite('！', '#ff4a4a', null, 128, 128, 'bold 120px sans-serif');
+  excl.scale.set(0.6, 0.6, 1); excl.position.y = 2.5; excl.visible = false;
+  group.add(excl);
+  const beam = beamMesh(7, 0.42, 0.06);
+  beam.position.y = 1.0; beam.visible = false;
+  group.add(beam);
+  return { group, body, head, name, excl, rope, legL, legR, armL, armR, beam, torso, faceKey: null, nameKey: null, phase: Math.random() * 6 };
+}
+function makeCanMesh() {
+  const g = new THREE.Group();
+  const c = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.44, 14), mat(0xd23a2e, { emissive: 0x330600 }));
+  c.position.y = 0.22; c.castShadow = true;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.175, 0.12, 14), mat(0xeeeeee));
+  band.position.y = 0.26;
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.02, 14), mat(0xcfd2da));
+  top.position.y = 0.45;
+  const inner = new THREE.Group();
+  inner.add(c, band, top);
+  g.add(inner);
+  g.userData.inner = inner;
+  return g;
+}
+// 金のうんこ（ぐるぐる三段＋てっぺん）
+let poopMat = null;
+function makePoopMesh(scale = 1) {
+  if (!poopMat) {
+    poopMat = new THREE.MeshStandardMaterial({ color: 0xe8b52a, emissive: 0x4a3200, roughness: 0.22, metalness: 0.85 });
+    poopMat.userData.keep = true;
+  }
+  const g = new THREE.Group();
+  [[0.16, 0.0], [0.12, 0.09], [0.08, 0.17]].forEach(([rad, y]) => {
+    const t = new THREE.Mesh(new THREE.TorusGeometry(rad, rad * 0.55, 10, 20), poopMat);
+    t.rotation.x = Math.PI / 2; t.position.y = y; g.add(t);
+  });
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 12), poopMat); tip.position.y = 0.25; tip.rotation.z = 0.3; g.add(tip);
+  const shine = glowSprite(0xffd860, 0.7, 0.55); shine.position.y = 0.1; g.add(shine);
+  g.scale.setScalar(scale);
+  return g;
+}
+
+// 鬼：赤い肌の大きな体、虎のパンツ、角とキバ、光る目、金棒と懐中電灯
+let tigerTex = null;
+function getTigerTex() {
+  if (tigerTex) return tigerTex;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e0a21c'; g.fillRect(0, 0, 256, 64);
+  g.fillStyle = '#1a1208';
+  for (let i = 0; i < 14; i++) {
+    const x = i * 19 + rand(-4, 4);
+    g.beginPath(); g.moveTo(x, 0); g.quadraticCurveTo(x + rand(-10, 10), 32, x + rand(-6, 6), 64); g.lineTo(x + 7, 64); g.quadraticCurveTo(x + 9 + rand(-8, 8), 32, x + 6, 0); g.fill();
+  }
+  tigerTex = canvasTex(c); tigerTex.wrapS = THREE.RepeatWrapping; keepTex.add(tigerTex);
+  return tigerTex;
+}
+function makeOniMesh() {
+  const group = new THREE.Group();
+  const body = new THREE.Group();
+  group.add(body);
+  const skin = new THREE.MeshStandardMaterial({ color: 0x84180e, roughness: 0.62, metalness: 0 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x120c0a, roughness: 0.9 });
+  const ivory = new THREE.MeshStandardMaterial({ color: 0xeee2bf, roughness: 0.5 });
+  const gold = new THREE.MeshStandardMaterial({ color: 0xc9a13b, roughness: 0.35, metalness: 0.7 });
+  const iron = new THREE.MeshStandardMaterial({ color: 0x3a3c42, roughness: 0.45, metalness: 0.8 });
+  const add = (parent, geo, m, x, y, z, sx = 1, sy = 1, sz = 1) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.scale.set(sx, sy, sz); o.castShadow = true; parent.add(o); return o; };
+  const S = (r, w = 14, h = 10) => new THREE.SphereGeometry(r, w, h);
+
+  // 脚（股関節で回す）
+  const mkLeg = (x) => {
+    const p = new THREE.Group(); p.position.set(x, 1.0, 0);
+    add(p, new THREE.CylinderGeometry(0.15, 0.11, 0.5, 10), skin, 0, -0.25, 0);
+    add(p, S(0.11), skin, 0, -0.5, 0.01);
+    add(p, new THREE.CylinderGeometry(0.11, 0.08, 0.45, 10), skin, 0, -0.73, 0);
+    add(p, new THREE.BoxGeometry(0.17, 0.08, 0.3), dark, 0, -0.97, 0.07);
+    add(p, new THREE.TorusGeometry(0.09, 0.025, 6, 12), gold, 0, -0.86, 0, 1, 1, 1).rotation.x = Math.PI / 2;
+    body.add(p); return p;
+  };
+  const legL = mkLeg(-0.17), legR = mkLeg(0.17);
+  // 虎のパンツ
+  const pants = add(body, new THREE.CylinderGeometry(0.36, 0.4, 0.34, 16), new THREE.MeshStandardMaterial({ map: getTigerTex(), roughness: 0.9 }), 0, 1.02, 0);
+  pants.material.map.repeat.set(2, 1);
+  // 胴（ムキムキ）
+  add(body, S(0.42, 16, 12), skin, 0, 1.45, 0, 1.05, 0.95, 0.72);
+  add(body, S(0.2), skin, -0.15, 1.62, 0.18, 1.1, 0.8, 0.6);
+  add(body, S(0.2), skin, 0.15, 1.62, 0.18, 1.1, 0.8, 0.6);
+  add(body, S(0.13), skin, 0, 1.3, 0.2, 1.2, 1, 0.6);
+  add(body, S(0.18), skin, -0.44, 1.78, 0);
+  add(body, S(0.18), skin, 0.44, 1.78, 0);
+  add(body, new THREE.CylinderGeometry(0.12, 0.15, 0.18, 10), skin, 0, 1.86, 0);
+  // 腕（肩で回す）
+  const mkArm = (x) => {
+    const p = new THREE.Group(); p.position.set(x, 1.8, 0);
+    add(p, new THREE.CylinderGeometry(0.12, 0.1, 0.5, 10), skin, 0, -0.25, 0);
+    const e = new THREE.Group(); e.position.y = -0.48; p.add(e);   // ひじ
+    add(e, S(0.1), skin, 0, 0, 0);
+    add(e, new THREE.CylinderGeometry(0.1, 0.08, 0.42, 10), skin, 0, -0.21, 0);
+    add(e, new THREE.TorusGeometry(0.09, 0.03, 6, 12), gold, 0, -0.34, 0).rotation.x = Math.PI / 2;
+    add(e, S(0.11), skin, 0, -0.47, 0.02, 1, 1.1, 0.8);
+    p.userData.elbow = e;
+    body.add(p); return p;
+  };
+  const armL = mkArm(-0.56), armR = mkArm(0.56);
+  // 金棒（右手）
+  const club = new THREE.Group();
+  add(club, new THREE.CylinderGeometry(0.04, 0.04, 0.35, 8), new THREE.MeshStandardMaterial({ color: 0x3b2618, roughness: 0.9 }), 0, 0, 0);
+  add(club, new THREE.CylinderGeometry(0.13, 0.06, 1.1, 10), iron, 0, -0.7, 0);
+  const spikeG = new THREE.ConeGeometry(0.035, 0.1, 6);
+  for (let i = 0; i < 18; i++) {
+    const a = (i % 6) / 6 * Math.PI * 2 + (i / 6 | 0) * 0.5, yy = -0.45 - (i / 6 | 0) * 0.3, r = 0.09 + (i / 6 | 0) * 0.025;
+    const sp = add(club, spikeG, ivory, Math.cos(a) * r, yy, Math.sin(a) * r);
+    sp.rotation.z = -Math.PI / 2; sp.rotation.y = -a;
+  }
+  club.position.set(0, -0.47, 0.05);
+  club.rotation.x = Math.PI - 0.25;
+  armR.userData.elbow.add(club);
+  // 懐中電灯（左手）
+  const lampM = add(armL.userData.elbow, new THREE.CylinderGeometry(0.05, 0.07, 0.26, 10), dark, 0, -0.52, 0.1);
+  lampM.rotation.x = Math.PI / 2;
+  // 頭
+  const head = new THREE.Group(); head.position.set(0, 2.12, 0.02); body.add(head);
+  add(head, S(0.27, 18, 14), skin, 0, 0, 0, 1, 1.08, 0.98);
+  add(head, new THREE.BoxGeometry(0.34, 0.16, 0.24), skin, 0, -0.17, 0.08);           // あご
+  add(head, new THREE.BoxGeometry(0.42, 0.06, 0.08), skin, 0, 0.08, 0.22).rotation.x = -0.2; // 眉の骨
+  add(head, S(0.06), skin, 0, -0.02, 0.27, 1, 0.8, 0.9);                             // 鼻
+  add(head, new THREE.BoxGeometry(0.24, 0.05, 0.04), dark, 0, -0.13, 0.27);           // 口
+  for (const s of [-1, 1]) {
+    add(head, new THREE.ConeGeometry(0.025, 0.11, 6), ivory, s * 0.09, -0.08, 0.28);   // キバ
+    const horn = add(head, new THREE.ConeGeometry(0.06, 0.36, 10), ivory, s * 0.15, 0.3, 0.02);
+    horn.rotation.z = -s * 0.45; horn.rotation.x = -0.25;
+    add(head, new THREE.BoxGeometry(0.11, 0.035, 0.03), dark, s * 0.1, 0.11, 0.255).rotation.z = s * 0.35; // 眉
+  }
+  // 光る目
+  const eyeM = new THREE.MeshBasicMaterial({ color: 0xffd23a });
+  const eyes = new THREE.Group();
+  for (const s of [-1, 1]) {
+    add(eyes, S(0.04, 10, 8), eyeM, s * 0.1, 0.04, 0.24, 1.2, 0.8, 0.5);
+    const gl = glowSprite(0xffb020, 0.22, 0.85); gl.position.set(s * 0.1, 0.04, 0.27); eyes.add(gl);
+  }
+  head.add(eyes);
+  // ぼさぼさの髪
+  const hairG = new THREE.ConeGeometry(0.1, 0.32, 6);
+  for (let i = 0; i < 14; i++) {
+    const a = Math.PI * 0.15 + (i / 13) * Math.PI * 0.7, yy = 0.05 + (i % 3) * 0.06;
+    const h = add(head, hairG, dark, Math.cos(a) * 0.25, yy + 0.08, -Math.sin(a) * 0.22);
+    h.rotation.x = -1.6 + (i % 3) * 0.2; h.rotation.z = (Math.cos(a)) * 1.2;
+  }
+  add(head, S(0.28), dark, 0, 0.06, -0.05, 1.02, 0.9, 0.95);
+  // 人が鬼のときは、その人の顔を仮面のように
+  const stunPoop = makePoopMesh(1.1); stunPoop.position.set(0, 0.3, 0); stunPoop.visible = false; head.add(stunPoop);
+  const faceDisc = new THREE.Mesh(new THREE.CircleGeometry(0.24, 24), new THREE.MeshBasicMaterial({ transparent: true }));
+  faceDisc.position.set(0, -0.02, 0.29); faceDisc.visible = false;
+  head.add(faceDisc);
+
+  const name = textSprite('');
+  name.scale.set(1.4, 0.26, 1); name.position.y = 2.95;
+  group.add(name);
+  const count = textSprite('', '#ffe08a', null, 416, 160, 'bold 120px sans-serif');
+  count.scale.set(1.46, 0.56, 1); count.position.y = 3.3; count.visible = false;
+  group.add(count);
+  const beam = beamMesh(7.5, CONE, 0.075);
+  beam.position.y = 1.15;
+  group.add(beam);
+  return { group, body, head, eyes, faceDisc, stunPoop, legL, legR, armL, armR, club, name, count, beam, faceKey: null, nameKey: null, phase: 0 };
+}
+
+// お化け：白い着物に長い黒髪、額の三角、垂れた手、足のない裾、まわりに人魂
+let ghostAlphaTex = null;
+function getGhostAlpha() {
+  if (ghostAlphaTex) return ghostAlphaTex;
+  const c = document.createElement('canvas'); c.width = 4; c.height = 128;
+  const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 128, 0, 0);
+  gr.addColorStop(0, '#000'); gr.addColorStop(0.45, '#fff'); gr.addColorStop(1, '#fff');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 128);
+  ghostAlphaTex = new THREE.CanvasTexture(c); keepTex.add(ghostAlphaTex);
+  return ghostAlphaTex;
+}
+function makeGhostMesh() {
+  const grp = new THREE.Group();
+  const sway = new THREE.Group(); grp.add(sway);
+  const robeM = new THREE.MeshLambertMaterial({ color: 0xf1efe8, emissive: 0x111620, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false, alphaMap: getGhostAlpha() });
+  const pts = [[0.02, 0.0], [0.12, 0.2], [0.24, 0.45], [0.32, 0.75], [0.35, 1.05], [0.33, 1.3], [0.3, 1.45], [0.2, 1.56], [0.08, 1.62]].map(([r, y]) => new THREE.Vector2(r, y));
+  const robe = new THREE.Mesh(new THREE.LatheGeometry(pts, 22), robeM);
+  sway.add(robe);
+  // 襟（左前）
+  const collarM = new THREE.MeshLambertMaterial({ color: 0xd9d6cc, emissive: 0x0d1018, transparent: true, opacity: 0.9 });
+  for (const s of [-1, 1]) {
+    const cl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.42, 0.02), collarM);
+    cl.position.set(s * 0.07, 1.36, 0.31); cl.rotation.z = s * 0.45; cl.rotation.x = -0.15;
+    sway.add(cl);
+  }
+  const skinM = new THREE.MeshLambertMaterial({ color: 0xcfd6d8, emissive: 0x0b0f14, transparent: true, opacity: 0.95 });
+  const hairM = new THREE.MeshLambertMaterial({ color: 0x050506, side: THREE.DoubleSide });
+  // 頭
+  const head = new THREE.Group(); head.position.set(0, 1.78, 0.02); sway.add(head);
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), skinM); face.scale.set(0.9, 1.12, 0.95); head.add(face);
+  // 長い黒髪（うしろ）
+  const back = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.3, 1.05, 16, 1, true, Math.PI * 0.35, Math.PI * 1.3), hairM);
+  back.position.set(0, 1.78 - 0.42, -0.01); sway.add(back);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.165, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+  cap.position.y = 0.01; head.add(cap);
+  // 顔にかかる前髪（すきまから片目が見える）
+  const strandG = new THREE.BoxGeometry(0.05, 0.62, 0.012);
+  [[-0.1, -0.08, 0.02], [-0.05, -0.12, -0.01], [0.015, -0.1, 0.0], [0.11, -0.06, -0.03]].forEach(([x, dy, rz]) => {
+    const st = new THREE.Mesh(strandG, hairM); st.position.set(x, dy - 0.14, 0.15 - Math.abs(x) * 0.25); st.rotation.z = rz; head.add(st);
+  });
+  const eyeM = new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: 0.95 });
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), eyeM); eye.position.set(0.062, 0.0, 0.135); head.add(eye);
+  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.01, 6, 4), new THREE.MeshBasicMaterial({ color: 0x000000 })); pupil.position.set(0.062, 0.0, 0.155); head.add(pupil);
+  // 額の三角の布（天冠）
+  const tri = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.09, 3), new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x1a1d24 }));
+  tri.position.set(0, 0.12, 0.13); tri.rotation.x = Math.PI / 2 - 0.4; tri.scale.set(1, 1, 0.2); head.add(tri);
+  // うらめしや…の手
+  const arms = [];
+  for (const s of [-1, 1]) {
+    const a = new THREE.Group(); a.position.set(s * 0.26, 1.45, 0.05);
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.13, 0.46, 10, 1, true), robeM);
+    sleeve.position.y = -0.2; a.add(sleeve);
+    const hand = new THREE.Group(); hand.position.y = -0.46; a.add(hand);
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.12), skinM); palm.position.z = 0.04; hand.add(palm);
+    for (let f = 0; f < 4; f++) {
+      const fg = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.012, 0.09), skinM);
+      fg.position.set(-0.027 + f * 0.018, -0.03, 0.12); fg.rotation.x = 0.9; hand.add(fg);
+    }
+    hand.rotation.x = -1.2;
+    a.rotation.x = -1.25; a.rotation.z = s * 0.12;
+    sway.add(a); arms.push(a);
+  }
+  // 人魂
+  const wisps = [0, 1].map((i) => { const w = glowSprite(i ? 0x7fc8ff : 0x5aa0ff, 0.45, 0.7); grp.add(w); return w; });
+  const aura = glowSprite(0x8fb0ff, 2.2, 0.06); aura.position.y = 1.1; grp.add(aura);
+  grp.userData = { sway, head, arms, wisps, mats: [robeM, collarM, skinM, hairM, eyeM], base: [0.88, 0.9, 0.95, 0.97, 0.95], seed: Math.random() * 100 };
+  return grp;
+}
+function fxKick(x, y) {
+  if (!sparks) return;
+  const p = sparks.geometry.attributes.position.array, v = sparks.userData.v;
+  for (let i = 0; i < 24; i++) {
+    p[i * 3] = x * U; p[i * 3 + 1] = 0.4; p[i * 3 + 2] = y * U;
+    const a = Math.random() * Math.PI * 2, s = rand(1.5, 5);
+    v[i * 3] = Math.cos(a) * s; v[i * 3 + 1] = rand(2, 5); v[i * 3 + 2] = Math.sin(a) * s;
+  }
+  sparks.userData.t = 0.8;
+  sparks.geometry.attributes.position.needsUpdate = true;
+}
+
+// ---------- 顔画像の読み込み（友達の分） ----------
+const remoteFaceImgs = new Map();
+const FACE_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const okFace = (s) => typeof s === 'string' && s.length < 3000 && FACE_RE.test(s);
+function imgForSrc(src) {
+  if (!okFace(src)) return null;
+  let e = remoteFaceImgs.get(src);
+  if (!e) {
+    e = { img: new Image(), ok: false };
+    e.img.onload = () => { e.ok = true; };
+    e.img.src = src;
+    remoteFaceImgs.set(src, e);
+  }
+  return e.ok ? e.img : null;
+}
+function faceImgFor(k) {
+  if (k.isMe) return faceImg;
+  if (k.faceSrc) return imgForSrc(k.faceSrc);
+  return null;
+}
+
+// ---------- 視点 ----------
+let spectating = false, specIndex = 0;
+function specList() {
+  const l = view.kids.filter((k) => k.st !== 3 && !k.isMe).map((k) => ({ key: k.key, x: k.x, y: k.y, yaw: k.fa, eye: 1.2, name: k.name }));
+  if (!view.oni.isMe) l.push({ key: 'oni', x: view.oni.x, y: view.oni.y, yaw: view.oni.fa + (view.oni.look || 0), eye: 1.55, name: view.oni.name || 'おに' });
+  return l;
+}
+// いま目にしている人（自分 or 観戦相手）
+let eyeTargetOverride = null;
+function eyeTarget() {
+  if (eyeTargetOverride) return eyeTargetOverride;
+  const s = myViewState();
+  if (!spectating && s.me && s.st !== 3) {
+    return { key: s.role === 'oni' ? 'oni' : s.me.key, x: s.me.x, y: s.me.y, yaw: ctl.yaw, pitch: ctl.pitch, eye: s.role === 'oni' ? 1.55 : 1.2, light: ctl.light, own: true };
+  }
+  const list = specList();
+  const t = list[specIndex % Math.max(1, list.length)];
+  if (!t) return { key: '-', x: HOME.x, y: HOME.y + 120, yaw: -Math.PI / 2, pitch: -0.1, eye: 1.4, light: false, own: false };
+  return Object.assign({ pitch: -0.08, light: false, own: false }, t);
+}
+
+// どれくらい明るく見えるか（0〜1）。暗いと顔も名前もわからない
+function brightnessAt(x, y, eye) {
+  let L = 0.05;
+  const dE = Math.hypot(x - eye.x, y - eye.y);
+  if (dE < 70) L = Math.max(L, 0.45 * (1 - dE / 70) + 0.1);
+  if (eye.light && dE < 640) {
+    const a = Math.atan2(y - eye.y, x - eye.x);
+    if (Math.abs(angleDiff(eye.yaw, a)) < 0.55) L = Math.max(L, 1 - dE / 720);
+  }
+  const dC = Math.hypot(x - HOME.x, y - HOME.y);
+  if (dC < 280) L = Math.max(L, 0.85 * (1 - dC / 300));
+  const o = view.oni;
+  if (o.light && o.st !== 0 && o.st !== 5) {
+    const dO = Math.hypot(x - o.x, y - o.y);
+    if (dO < view.vision) {
+      const a = Math.atan2(y - o.y, x - o.x);
+      if (Math.abs(angleDiff(o.fa + (o.look || 0), a)) < CONE) L = Math.max(L, 0.9 * (1 - dO / (view.vision * 1.2)));
+    }
+  }
+  for (const k of view.kids) {
+    if (!k.light || k.st === 3 || k.key === eye.key) continue;
+    const d = Math.hypot(x - k.x, y - k.y);
+    if (d < 520 && d > 1 && Math.abs(angleDiff(k.fa, Math.atan2(y - k.y, x - k.x))) < 0.5) L = Math.max(L, 0.8 * (1 - d / 600));
+  }
+  return clamp(L, 0, 1);
+}
+
+// ---------- 描画 ----------
+let lastSt = new Map();
+function render3D(dt, t) {
+  if (!has3D || !oniMesh) return;
+  const eye = eyeTarget();
+  const bob = eye.own && myMoving() ? Math.sin(t * 9) * 0.035 : 0;
+  camera.rotation.y = -eye.yaw - Math.PI / 2;
+  camera.rotation.x = eye.pitch;
+  if (eye.own || eye.key === '-') camera.position.set(eye.x * U, eye.eye + bob, eye.y * U);
+  else {
+    // 観戦は、その人のすこし後ろから
+    camera.rotation.x = -0.28;
+    camera.position.set((eye.x - Math.cos(eye.yaw) * 70) * U, eye.eye + 0.9, (eye.y - Math.sin(eye.yaw) * 70) * U);
+  }
+  const hideKey = eye.own ? eye.key : null;
+  const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+  myGlow.position.set(eye.x * U, 1.6, eye.y * U);
+  // 自分のライト
+  myLight.intensity = eye.light ? 3.2 : 0;
+  myLight.position.set(eye.x * U + fwd.x * 0.2, eye.eye - 0.15, eye.y * U + fwd.z * 0.2);
+  myLightTarget.position.set(eye.x * U + fwd.x * 8, eye.eye - 0.15 + fwd.y * 8, eye.y * U + fwd.z * 8);
+  handLamp.visible = eye.own;
+  handBulb.material.color.set(eye.light ? 0xfff6d8 : 0x333333);
+  handLamp.position.y = -0.15 + bob * 0.6;
+
+  // 子どもたち
+  const seen = new Set();
+  for (const kd of view.kids) {
+    seen.add(kd.key);
+    let m = kidMeshes.get(kd.key);
+    if (!m) { m = makeKidMesh(kd.color); kidMeshes.set(kd.key, m); scene.add(m.group); }
+    const img = faceImgFor(kd);
+    const fk = (img ? img.src.length + img.src.slice(-30) : 'none') + kd.color;
+    if (m.faceKey !== fk) { m.faceKey = fk; m.head.material.map = faceTexture(img, kd.color, false); m.head.material.needsUpdate = true; }
+    if (m.nameKey !== kd.name) { m.nameKey = kd.name; m.name.userData.draw(kd.name, '#eef'); }
+    m.group.visible = kd.st !== 3 && kd.key !== hideKey;
+    const walking = kd.moving && kd.st !== 2;
+    m.phase += dt * (walking ? 12 : 0);
+    const sw = walking ? Math.sin(m.phase) * 0.7 : 0;
+    m.group.position.set(kd.x * U, walking ? Math.abs(Math.sin(m.phase)) * 0.05 : 0, kd.y * U);
+    m.body.rotation.y = Math.PI / 2 - kd.fa;
+    m.legL.rotation.x = sw; m.legR.rotation.x = -sw; m.armL.rotation.x = -sw * 0.8; m.armR.rotation.x = kd.light ? -1.3 : sw * 0.8;
+    m.rope.visible = kd.st === 2;
+    const L = brightnessAt(kd.x, kd.y, eye);
+    m.head.material.color.setScalar(clamp(L * 1.15, 0.04, 1));
+    const dE = Math.hypot(kd.x - eye.x, kd.y - eye.y);
+    m.head.visible = !eye.own || dE > 22;
+    m.name.visible = L > 0.4 && dE < 520 && kd.key !== eye.key;
+    m.excl.visible = kd.st === 1 && L > 0.3;
+    m.beam.visible = !!kd.light && kd.st !== 3;
+    m.beam.rotation.y = Math.PI / 2 - kd.fa; m.beam.rotation.x = 0.12;
+    const prev = lastSt.get(kd.key);
+    if (kd.st === 3 && prev !== undefined && prev !== 3) {
+      const s = glowSprite(0x9fe6ff, 1.0, 1); s.position.set(kd.x * U, 1.2, kd.y * U); scene.add(s);
+      souls.push({ sprite: s, t: 0 });
+    }
+    lastSt.set(kd.key, kd.st);
+  }
+  for (const [key, m] of kidMeshes) if (!seen.has(key)) { scene.remove(m.group); disposeTree(m.group); kidMeshes.delete(key); }
+
+  // 鬼
+  const o = view.oni;
+  const counting = o.st === 0 || o.st === 5;
+  const oimg = o.isMe ? faceImg : (o.faceSrc ? imgForSrc(o.faceSrc) : null);
+  const ofk = oimg ? 'img' + oimg.src.length + oimg.src.slice(-30) : 'oni';
+  if (oniMesh.faceKey !== ofk) {
+    oniMesh.faceKey = ofk;
+    oniMesh.faceDisc.visible = !!oimg; oniMesh.eyes.visible = !oimg;
+    if (oimg) { oniMesh.faceDisc.material.map = faceTexture(oimg, '#c0392b', false); oniMesh.faceDisc.material.needsUpdate = true; }
+  }
+  const oname = o.name || 'おに';
+  if (oniMesh.nameKey !== oname) { oniMesh.nameKey = oname; oniMesh.name.userData.draw(`👹${oname}`, '#ffb0a6'); }
+  oniMesh.group.visible = hideKey !== 'oni' && !(o.isMe && !spectating);
+  oniMesh.group.position.set(o.x * U, 0, o.y * U);
+  oniMesh.body.rotation.y = Math.PI / 2 - o.fa;
+  const omove = (o.moving !== undefined ? o.moving : true) && !counting;
+  oniMesh.phase += dt * (omove ? 7.5 : 0);
+  const osw = omove ? Math.sin(oniMesh.phase) : 0;
+  oniMesh.legL.rotation.x = osw * 0.55; oniMesh.legR.rotation.x = -osw * 0.55;
+  oniMesh.body.position.y = omove ? Math.abs(Math.cos(oniMesh.phase)) * 0.06 : Math.sin(t * 2) * 0.012;
+  oniMesh.body.rotation.x = omove ? 0.1 : 0;
+  oniMesh.head.rotation.y = counting ? 0 : (o.look || 0) * 0.8;
+  oniMesh.head.rotation.x = counting ? 0.35 : 0;
+  if (counting) {
+    // 目をおおって数える
+    oniMesh.armL.rotation.set(-1.25, 0, -0.55); oniMesh.armR.rotation.set(-1.25, 0, 0.55);
+    oniMesh.armL.userData.elbow.rotation.x = -1.75; oniMesh.armR.userData.elbow.rotation.x = -1.75;
+  } else {
+    oniMesh.armL.rotation.set(-1.1, 0, 0.05);                     // ライトを前に
+    oniMesh.armL.userData.elbow.rotation.x = -0.25;
+    oniMesh.armR.rotation.set(-0.3 + osw * 0.35, 0, -0.12);        // 金棒をぶらさげて歩く
+    oniMesh.armR.userData.elbow.rotation.x = -0.35;
+  }
+  const OL = brightnessAt(o.x, o.y, eye);
+  oniMesh.faceDisc.material.color.setScalar(clamp(OL * 1.15, 0.05, 1));
+  oniMesh.name.visible = OL > 0.4 && Math.hypot(o.x - eye.x, o.y - eye.y) < 520;
+  const stunned = o.stun > 0;
+  oniMesh.stunPoop.visible = stunned;
+  if (stunned) { oniMesh.stunPoop.rotation.y = t * 2; oniMesh.head.rotation.z = Math.sin(t * 3) * 0.15; oniMesh.armL.rotation.set(-0.1, 0, 0.25); oniMesh.armR.rotation.set(-0.1, 0, -0.25); oniMesh.armL.userData.elbow.rotation.x = 0; oniMesh.armR.userData.elbow.rotation.x = 0; }
+  else oniMesh.head.rotation.z = 0;
+  oniMesh.count.visible = (counting || stunned) && mode !== null && (OL > 0.2 || stunned);
+  if (counting || stunned) {
+    const n = stunned ? `💫${Math.ceil(o.stun)}` : String(Math.max(1, Math.ceil(o.t)));
+    if (oniMesh.count.userData.n !== n) { oniMesh.count.userData.n = n; oniMesh.count.userData.draw(n, stunned ? '#ffd34a' : '#ffe08a'); }
+  }
+  const la = o.fa + (o.look || 0);
+  const oLight = !!o.light && !counting;
+  oniMesh.beam.visible = oLight && oniMesh.group.visible;
+  oniMesh.beam.rotation.y = Math.PI / 2 - la;
+  oniMesh.beam.rotation.x = 0.14;
+  oniSpot.visible = oLight && !(o.isMe && !spectating);
+  oniSpot.distance = view.vision * U + 2.5;
+  oniSpot.position.set(o.x * U, 1.4, o.y * U);
+  oniSpotTarget.position.set((o.x + Math.cos(la) * 200) * U, 0, (o.y + Math.sin(la) * 200) * U);
+
+  // 缶
+  const c = view.can;
+  if (c.st === 3) canMesh.position.set((o.x + Math.cos(o.fa) * 14) * U, 0.9, (o.y + Math.sin(o.fa) * 14) * U);
+  else canMesh.position.set(c.x * U, c.st === 1 ? 0.25 + Math.abs(Math.sin(c.spin * 0.3)) * 0.3 : 0, c.y * U);
+  canMesh.userData.inner.rotation.z = c.st === 1 ? c.spin : (c.st === 2 ? Math.PI / 2 : 0);
+  canMesh.userData.inner.position.y = c.st === 2 ? 0.17 : 0;
+  canMesh.visible = !(c.st === 3 && o.isMe && !spectating);
+
+  // お化け
+  while (ghostMeshes.length < view.ghosts.length) { const gm = makeGhostMesh(); const g0 = view.ghosts[ghostMeshes.length]; gm.rotation.y = Math.atan2(eye.x - g0.x, eye.y - g0.y); ghostMeshes.push(gm); scene.add(gm); }
+  ghostMeshes.forEach((gm, i) => {
+    const g = view.ghosts[i];
+    gm.visible = !!g;
+    if (!g) return;
+    const u = gm.userData, ph = t * 1.3 + u.seed;
+    gm.position.set(g.x * U, 0.18 + Math.sin(ph) * 0.12, g.y * U);
+    // ゆっくりこちらを向く
+    const want = Math.atan2(eye.x - g.x, eye.y - g.y);
+    gm.rotation.y += angleDiff(gm.rotation.y, want) * Math.min(1, dt * 3);
+    u.sway.rotation.z = Math.sin(ph * 0.7) * 0.06;
+    u.sway.rotation.x = 0.08 + Math.sin(ph * 0.5) * 0.04;
+    u.head.rotation.z = 0.1 + Math.sin(ph * 0.4) * 0.06;           // 首をかしげる
+    u.arms.forEach((a, k) => { a.rotation.x = -1.25 + Math.sin(ph * 0.9 + k) * 0.08; });
+    u.wisps.forEach((w, k) => {
+      const a = t * (1.1 + k * 0.4) + k * Math.PI + u.seed;
+      w.position.set(Math.cos(a) * 0.7, 1.2 + Math.sin(a * 1.7) * 0.35, Math.sin(a) * 0.7);
+      w.material.opacity = 0.45 + Math.sin(t * 9 + k * 3 + u.seed) * 0.2;
+    });
+    // ときどき、すうっと消えかける
+    const flick = Math.sin(t * 0.9 + u.seed) > 0.93 ? 0.25 + Math.abs(Math.sin(t * 23 + u.seed)) * 0.3 : 1;
+    u.mats.forEach((m, k) => { m.opacity = u.base[k] * flick; });
+  });
+
+  // 金のうんこ（飛んでいる・落ちている）
+  while (poopMeshes.length < view.poops.length) { const pm = makePoopMesh(0.9); poopMeshes.push(pm); scene.add(pm); }
+  poopMeshes.forEach((pm, i) => {
+    const p = view.poops[i];
+    pm.visible = !!p && !p.hit;
+    if (!pm.visible) return;
+    const k = clamp(p.d / POOP_RANGE, 0, 1);
+    const y = p.f ? 0.05 : 1.0 + Math.sin(k * Math.PI) * 0.7 - k * 0.8;
+    pm.position.set(p.x * U, Math.max(0.05, y), p.y * U);
+    pm.rotation.set(p.f ? 0 : t * 9, p.f ? 0 : t * 5, 0);
+  });
+
+  for (const s of souls) { s.t += dt; s.sprite.position.y += dt * 1.0; s.sprite.material.opacity = Math.max(0, 1 - s.t / 3); }
+  souls = souls.filter((s) => { if (s.t > 3) { scene.remove(s.sprite); s.sprite.material.dispose(); return false; } return true; });
+
+  if (sparks.userData.t > 0) {
+    sparks.userData.t -= dt;
+    const p = sparks.geometry.attributes.position.array, v = sparks.userData.v;
+    for (let i = 0; i < 24; i++) {
+      v[i * 3 + 1] -= 9 * dt;
+      p[i * 3] += v[i * 3] * dt; p[i * 3 + 1] = Math.max(0.02, p[i * 3 + 1] + v[i * 3 + 1] * dt); p[i * 3 + 2] += v[i * 3 + 2] * dt;
+    }
+    sparks.geometry.attributes.position.needsUpdate = true;
+    sparks.material.opacity = Math.min(1, sparks.userData.t * 2);
+  } else sparks.material.opacity = 0;
+
+  renderer.render(scene, camera);
+}
+function myMoving() {
+  const s = myViewState();
+  return !!(s.me && s.me.moving);
+}
+
+// ---------- 2D の上乗せ（ミニマップ・スティック） ----------
+const ui = $('ui');
+const uctx = ui.getContext('2d');
+let VW = 0, VH = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  VW = innerWidth; VH = innerHeight;
+  ui.width = VW * DPR; ui.height = VH * DPR;
+  if (renderer) {
+    renderer.setSize(VW, VH, false); camera.aspect = VW / VH;
+    camera.fov = VW < VH ? 82 : 72;
+    camera.updateProjectionMatrix();
+  }
+}
+addEventListener('resize', resize);
+
+function renderUI() {
+  uctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  uctx.clearRect(0, 0, VW, VH);
+  if (!mode) return;
+  const eye = eyeTarget();
+  // ミニマップ（自分と缶だけ。ほかはわからない）
+  const w = Math.min(130, VW * 0.3), h = w * WORLD_H / WORLD_W;
+  const x0 = VW - w - 12, y0 = 56;
+  uctx.fillStyle = 'rgba(8,10,24,.7)'; uctx.fillRect(x0, y0, w, h);
+  uctx.strokeStyle = 'rgba(160,170,255,.3)'; uctx.strokeRect(x0 + .5, y0 + .5, w - 1, h - 1);
+  const sx = w / WORLD_W, sy = h / WORLD_H;
+  uctx.fillStyle = 'rgba(140,140,160,.3)';
+  for (const o of obstacles) if (o.kind === 'grave') uctx.fillRect(x0 + o.x * sx, y0 + o.y * sy, Math.max(1.2, o.w * sx), Math.max(1.2, o.h * sy));
+  uctx.strokeStyle = 'rgba(255,190,90,.5)'; uctx.beginPath(); uctx.arc(x0 + HOME.x * sx, y0 + HOME.y * sy, SAFE_R * sx, 0, Math.PI * 2); uctx.stroke();
+  const canP = view.can.st === 3 ? view.oni : view.can;
+  uctx.fillStyle = '#ffcf5a'; uctx.beginPath(); uctx.arc(x0 + canP.x * sx, y0 + canP.y * sy, 3, 0, Math.PI * 2); uctx.fill();
+  // 自分（向きの三角）
+  uctx.save();
+  uctx.translate(x0 + eye.x * sx, y0 + eye.y * sy); uctx.rotate(eye.yaw);
+  uctx.fillStyle = eye.own ? '#ffffff' : '#9fe6ff';
+  uctx.beginPath(); uctx.moveTo(6, 0); uctx.lineTo(-4, -4); uctx.lineTo(-4, 4); uctx.closePath(); uctx.fill();
+  uctx.restore();
+  // スティック
+  if (joy.id !== null) {
+    uctx.strokeStyle = 'rgba(255,255,255,.3)'; uctx.lineWidth = 2;
+    uctx.beginPath(); uctx.arc(joy.ox, joy.oy, 42, 0, Math.PI * 2); uctx.stroke();
+    const dx = joy.x - joy.ox, dy = joy.y - joy.oy, l = Math.hypot(dx, dy), m = Math.min(42, l);
+    const kx = l ? joy.ox + dx / l * m : joy.ox, ky = l ? joy.oy + dy / l * m : joy.oy;
+    uctx.fillStyle = 'rgba(255,255,255,.3)'; uctx.beginPath(); uctx.arc(kx, ky, 22, 0, Math.PI * 2); uctx.fill();
+  }
+  // 鬼のいる方向の矢印（あぶないとき）
+  const relA = angleDiff(eye.yaw, threat.ang);
+  if (threat.lv > 0 && Math.abs(relA) > 0.45) {          // 前に見えているときは出さない
+    const rel = relA;                                      // 0=正面, +右
+    const rad = Math.min(VW, VH) * 0.3;
+    const ax = VW / 2 + Math.sin(rel) * rad, ay = VH / 2 - Math.cos(rel) * rad;
+    const pulse = 0.65 + 0.35 * Math.sin(performance.now() / (threat.lv >= 2 ? 70 : 160));
+    uctx.save();
+    uctx.translate(ax, ay); uctx.rotate(rel);
+    uctx.globalAlpha = pulse;
+    uctx.fillStyle = threat.lv >= 2 ? '#ff3b3b' : '#ffd34a';
+    uctx.strokeStyle = 'rgba(0,0,0,.6)'; uctx.lineWidth = 3;
+    uctx.beginPath(); uctx.moveTo(0, -22); uctx.lineTo(16, 8); uctx.lineTo(5, 4); uctx.lineTo(0, 14); uctx.lineTo(-5, 4); uctx.lineTo(-16, 8); uctx.closePath();
+    uctx.stroke(); uctx.fill();
+    uctx.restore();
+    uctx.save(); uctx.globalAlpha = pulse;
+    uctx.font = 'bold 20px sans-serif'; uctx.textAlign = 'center'; uctx.textBaseline = 'middle';
+    uctx.fillText('👹', VW / 2 + Math.sin(rel) * (rad + 30), VH / 2 - Math.cos(rel) * (rad + 30));
+    uctx.restore();
+  }
+  // まんなかの小さな点
+  if (eye.own) { uctx.fillStyle = 'rgba(255,255,255,.35)'; uctx.beginPath(); uctx.arc(VW / 2, VH / 2, 2, 0, Math.PI * 2); uctx.fill(); }
+}
+
+// ---------- ドキドキ（鬼やお化けが近いと心臓の音） ----------
+let heartT = 0, danger = 0;
+function updateDanger(dt) {
+  const s = myViewState();
+  let d = 0;
+  if (mode && s.me && s.st !== 3 && !(game && game.over) && !net.ended) {
+    for (const g of view.ghosts) { const dd = Math.hypot(g.x - s.me.x, g.y - s.me.y); if (dd < 240) d = Math.max(d, 1 - dd / 240); }
+    if (s.role === 'hider' && s.st !== 2 && view.oni.st !== 0) {
+      const dd = Math.hypot(view.oni.x - s.me.x, view.oni.y - s.me.y);
+      if (dd < 360) d = Math.max(d, (1 - dd / 360) * 0.9);
+      if (s.st === 1) d = Math.max(d, 0.8);
+    }
+  }
+  danger = lerp(danger, d, 1 - Math.pow(0.02, dt));
+  $('vignette').style.opacity = (danger * 0.85).toFixed(2);
+  if (danger > 0.12 && !paused) {
+    heartT -= dt;
+    if (heartT <= 0) { sfx.heart(Math.min(1, danger + 0.3)); heartT = lerp(1.25, 0.38, danger); }
+  }
+}
+
+// ---------- HUD ----------
+const hud = $('hud');
+const msgEl = $('msg');
+function fmtTime(t) { t = Math.max(0, Math.ceil(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; }
+// 鬼が自分を見ているか（0:安全 1:あぶない 2:見られてる 3:みつかった）
+let threat = { lv: 0, ang: 0 }, lastThreat = 0;
+function computeThreat() {
+  const s = myViewState();
+  const o = view.oni;
+  threat = { lv: 0, ang: 0, kind: '' };
+  if (!mode || spectating || s.role !== 'hider' || !s.me || s.st >= 2 || net.ended || (game && game.over)) return threat;
+  if (o.st === 0 || o.stun > 0) return threat;
+  const me = s.me;
+  const d = Math.hypot(o.x - me.x, o.y - me.y);
+  threat.ang = Math.atan2(o.y - me.y, o.x - me.x);
+  if (s.st === 1) { threat.lv = 3; threat.kind = 'found'; return threat; }
+  const toMe = Math.atan2(me.y - o.y, me.x - o.x);
+  const off = Math.abs(angleDiff(o.fa + (o.look || 0), toMe));
+  const vis = view.vision * (o.light ? 1 : 0.5);
+  const seen = d < 300 * 2 && clearLine(o, me);
+  // 見つかる一歩手前（ライトのすぐ外・すぐそば）なら赤、こっちを向いて近づいてきたら黄色
+  if (d < 110 || (seen && d < vis * 1.3 && off < CONE + 0.3) || (seen && ctl.light && d < view.vision * 2)) {
+    threat.lv = 2; threat.kind = d < 110 ? 'near' : (ctl.light && d < view.vision * 2 ? 'light' : 'seen');
+  } else if ((seen && d < vis * 2 && off < CONE + 0.7) || d < 220) { threat.lv = 1; threat.kind = d < 220 ? 'near' : 'look'; }
+  return threat;
+}
+
+function updateHud() {
+  const th = computeThreat();
+  if (th.lv >= 2 && lastThreat < 2 && th.lv !== 3) { beep(1250, 0.07, 'square', 0.05); beep(1250, 0.07, 'square', 0.05, 0, 0.11); }
+  lastThreat = th.lv;
+  show('warn', th.lv > 0);
+  if (th.lv > 0) {
+    const w = $('warn');
+    w.className = th.lv >= 2 ? 'lv2' : 'lv1';
+    $('warnIco').textContent = th.lv === 3 ? '‼️' : th.lv === 2 ? '👁️' : '⚠️';
+    $('warnText').textContent = th.lv === 3 ? 'みつかった！ 缶へ走れ！'
+      : th.lv === 2 ? (th.kind === 'near' ? 'すぐそばに鬼がいる！' : th.kind === 'light' ? 'ライトで気づかれる！ 消して！' : 'あぶない！ 鬼に見られそう')
+      : (th.kind === 'near' ? '鬼が近い… 気をつけて' : '鬼がこっちを向いてる');
+  }
+  const s = myViewState();
+  $('hudTime').textContent = `⏱ ${fmtTime(view.time)}`;
+  $('hudRole').hidden = s.role !== 'oni';
+  $('hudKick').hidden = s.role === 'oni';
+  $('hudKick').textContent = `🥫 ${view.myKicks}`;
+  $('hudCaught').textContent = `🔒 ${view.kids.filter((k) => k.st === 2).length}/${view.kids.length}`;
+  $('hudRoom').hidden = mode === 'solo';
+  $('hudRoom').textContent = `👥 ${view.kids.filter((k) => k.kind !== 'cpu').length + (view.oni.human ? 1 : 0)}人`;
+  let text = view.msgT > 0 ? view.msg : '';
+  let color = view.msgColor;
+  if (!text && s.me && !spectating) {
+    if (s.role === 'hider' && s.st === 1) { text = ''; }
+    else if (s.role === 'hider' && s.st === 2) { text = 'つかまった… 仲間が缶を蹴るのを待とう'; color = '#ffb37a'; }
+    else if (s.role === 'oni' && view.oni.stun > 0) { text = `💩 金のうんこで動けない… ${Math.ceil(view.oni.stun)}`; color = '#ffd34a'; }
+    else if (s.role === 'oni' && view.kids.some((k) => k.st === 1) && view.can.st === 0) { text = '見つけた子がいる！ 缶をふみに戻れ'; color = '#ff8a7a'; }
+    else if (s.role === 'oni' && view.can.st === 2) { text = '缶が蹴られた！ 拾って元の場所へ'; color = '#8ef0ff'; }
+  }
+  msgEl.textContent = text;
+  msgEl.style.color = color;
+  msgEl.style.opacity = text ? 1 : 0;
+  msgEl.style.fontSize = VW < 480 ? '18px' : '26px';
+  const blind = s.role === 'oni' && s.st !== 3 && view.oni.st === 0 && !spectating;
+  show('blind', blind);
+  if (blind) $('blindNum').textContent = String(Math.max(1, Math.ceil(view.oni.t)));
+  show('lightBtn', !!s.me && s.st !== 3 && !spectating);
+  show('poopBtn', s.role === 'hider' && !!s.me && s.st !== 3 && !spectating);
+  $('poopNum').textContent = String(Math.max(0, view.myPoop || 0));
+  $('poopBtn').disabled = !(view.myPoop > 0) || s.st === 2;
+  $('lightBtn').classList.toggle('on', ctl.light);
+  if (spectating) {
+    const list = specList();
+    const tt = list[specIndex % Math.max(1, list.length)];
+    $('specName').textContent = `👀 ${tt ? tt.name : ''}`;
+  }
+}
+
+// =====================================================================
+//  友達とあそぶ（room の presence でつながる）
+//   ・みんな自分の位置・向き・ライト・名前・顔を presence に出す
+//   ・ホストが鬼（CPU のとき）・お化け・缶・CPU の子を動かし、その様子を presence の g に出す
+// =====================================================================
+const net = {
+  base: null, room: null, code: '', joined: false, t0: 0,
+  me: null, hostPeer: null, isHost: false, gameId: null, startedId: null,
+  lastSend: 0, seenMsg: -1, seenSfx: -1, local: null, throws: 0, poopHold: 0, players: [], ended: false, disp: null, diff: 1, myRole: 'hider',
+};
+const roomReady = (window.claude && typeof window.claude.use === 'function')
+  ? window.claude.use('room').catch(() => null) : Promise.resolve(null);
+roomReady.then((r) => { net.base = r; });
+
+$('codeInput').value = store.get('kankeri-code') || '';
+
+// 誰でもリンクで遊べる版（GitHub Pages）の場所
+const PUBLIC_URL = 'https://oranigennkiwo0909-rgb.github.io/kankeri/';
+
+// ---------- claude.ai 以外（GitHub Pages など）で開いたときのつなぎ方 ----------
+//  無料の中継サーバー（PeerJS）で、同じ合言葉の端末どうしを直接つなぐ。
+//  いちばん先に来た人が「まとめ役」になり、みんなの presence を集めて配る。
+//  ゲーム側からは claude.ai の room と同じ形（presence / peers / onPeers / onConnection）に見える。
+const P2P_ICE = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+function p2pOptions() {
+  const q = new URLSearchParams(location.search);
+  const o = { debug: 0, config: { iceServers: P2P_ICE } };
+  if (q.get('peerhost')) Object.assign(o, { host: q.get('peerhost'), port: Number(q.get('peerport') || 9000), path: '/', secure: false });
+  return o;
+}
+function hashCode(str) {
+  let h1 = 0x811c9dc5, h2 = 0x1234567;
+  for (const ch of str) { const c = ch.codePointAt(0); h1 = Math.imul(h1 ^ c, 16777619); h2 = Math.imul(h2 ^ c, 2246822507); }
+  return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+}
+function makeP2PRoom(code) {
+  const myId = Math.random().toString(36).slice(2, 10);
+  const hubId = 'kankeri-v1-' + hashCode(code);
+  let peer = null, isHub = false, hubConn = null, closed = false, connected = false;
+  let mine = {};
+  const members = new Map();          // まとめ役のとき：id -> { pres, conn }
+  let snapshot = Object.freeze([]);
+  const peerL = new Set(), connL = new Set();
+  let dirty = false, timer = null;
+
+  const build = (list) => {
+    snapshot = Object.freeze(list.map(([id, pres]) => Object.freeze({ peer: id, by: null, isMe: id === myId, sameTab: id === myId, kind: 'viewer', guest: false, presence: pres || {}, updatedAt: Date.now() })));
+    const ch = { peers: snapshot, joined: [], left: [], updated: [] };
+    for (const f of peerL) { try { f(ch); } catch (e) {} }
+  };
+  const setConn = (c) => { if (connected === c) return; connected = c; for (const f of connL) { try { f(c); } catch (e) {} } };
+  const hubList = () => [[myId, mine], ...[...members].map(([id, m]) => [id, m.pres])];
+  const hubBroadcast = () => {
+    if (!dirty) return;
+    dirty = false;
+    const list = hubList();
+    build(list);
+    const msg = { t: 'all', list };
+    for (const m of members.values()) { try { if (m.conn.open) m.conn.send(msg); } catch (e) {} }
+  };
+
+  function becomeHub() {
+    isHub = true;
+    setConn(true);
+    dirty = true; hubBroadcast();
+    timer = setInterval(hubBroadcast, 60);
+    peer.on('connection', (conn) => {
+      conn.on('data', (d) => {
+        if (!d || typeof d !== 'object') return;
+        if (d.t === 'p' && typeof d.id === 'string' && d.id.length < 20 && d.pres && typeof d.pres === 'object') {
+          members.set(d.id, { pres: d.pres, conn }); conn._kid = d.id; dirty = true;
+        }
+      });
+      const drop = () => { if (conn._kid && members.get(conn._kid) && members.get(conn._kid).conn === conn) { members.delete(conn._kid); dirty = true; } };
+      conn.on('close', drop); conn.on('error', drop);
+    });
+  }
+  function becomeClient() {
+    isHub = false;
+    hubConn = peer.connect(hubId, { reliable: true });
+    const myConn = hubConn;
+    // まとめ役が消えていると返事がこないので、待ちすぎたらやりなおす
+    setTimeout(() => { if (!closed && hubConn === myConn && !myConn.open) { setConn(false); build([[myId, mine]]); retry(); } }, 7000);
+    hubConn.on('open', () => { setConn(true); hubConn.send({ t: 'p', id: myId, pres: mine }); });
+    hubConn.on('data', (d) => { if (d && d.t === 'all' && Array.isArray(d.list)) build(d.list.filter((x) => Array.isArray(x) && typeof x[0] === 'string').slice(0, 32)); });
+    const lost = () => { if (closed) return; setConn(false); build([[myId, mine]]); retry(); };
+    hubConn.on('close', lost); hubConn.on('error', lost);
+  }
+  let retrying = false;
+  function retry() {
+    if (retrying || closed) return;
+    retrying = true;
+    clearInterval(timer); timer = null;
+    try { peer && peer.destroy(); } catch (e) {}
+    peer = null;
+    setTimeout(() => { retrying = false; start(); }, 1500 + Math.random() * 2000);
+  }
+  function start() {
+    if (closed) return;
+    // まず、まとめ役になれるか試す（同じ合言葉で先に来た人がいれば、その人につなぐ）
+    peer = new window.Peer(hubId, p2pOptions());
+    peer.on('open', () => becomeHub());
+    peer.on('error', (e) => {
+      if (e && e.type === 'unavailable-id') {
+        try { peer.destroy(); } catch (err) {}
+        peer = new window.Peer(undefined, p2pOptions());
+        peer.on('open', () => becomeClient());
+        peer.on('error', (e2) => { if (!closed) { setConn(false); build([[myId, mine]]); retry(); } });
+        peer.on('disconnected', () => { if (!closed && peer && !peer.destroyed) { try { peer.reconnect(); } catch (err) {} } });
+      } else retry();
+    });
+    peer.on('disconnected', () => { if (isHub && !closed && peer && !peer.destroyed) { try { peer.reconnect(); } catch (err) {} } });
+  }
+  build([[myId, mine]]);
+  start();
+
+  return {
+    async presence(patch) {
+      mine = Object.assign({}, mine);
+      for (const k of Object.keys(patch)) { if (patch[k] === null) delete mine[k]; else mine[k] = patch[k]; }
+      if (isHub) dirty = true;
+      else {
+        build(snapshot.map((p) => [p.peer, p.isMe ? mine : p.presence]));
+        if (hubConn && hubConn.open) { try { hubConn.send({ t: 'p', id: myId, pres: mine }); } catch (e) {} }
+      }
+    },
+    peers() { return snapshot; },
+    onPeers(f) { peerL.add(f); setTimeout(() => f({ peers: snapshot, joined: snapshot, left: [], updated: [] }), 0); return () => peerL.delete(f); },
+    onConnection(f) { connL.add(f); setTimeout(() => f(connected), 0); return () => connL.delete(f); },
+    connected() { return connected; },
+    async leave() { closed = true; clearInterval(timer); try { hubConn && hubConn.close(); } catch (e) {} try { peer && peer.destroy(); } catch (e) {} },
+    p2p: true,
+  };
+}
+
+function lobbyStatus(t) { $('lobbyStatus').textContent = t; }
+function pushLobbyPresence() {
+  if (!net.room || !net.joined) return;
+  net.room.presence({ n: myName(), f: faceSmall || null, wo: role === 'oni' ? 1 : 0 }).catch(() => {});
+}
+
+function openLobby() {
+  show('title', false); show('lobby', true); show('resultModal', false);
+  if (net.joined) { show('lobbyJoin', false); show('lobbyRole', true); renderLobby(); return; }
+  show('lobbyJoin', true); show('lobbyRole', false); $('members').textContent = ''; show('hostStartBtn', false);
+  lobbyStatus('つなぐ準備をしています…');
+  $('joinBtn').disabled = true;
+  roomReady.then((r) => {
+    if (net.joined) return;
+    const inClaude = !!window.claude;   // claude.ai の中では外へ通信できない
+    const ok = r || (!inClaude && window.Peer);
+    lobbyStatus(r ? '合言葉を決めて「部屋に入る」を押してね。'
+      : ok ? '合言葉を決めて「部屋に入る」を押してね。インターネットで友達とつなぎます。'
+      : inClaude ? `この開き方では友達モードにつなげません。LINE などで友達とあそぶときは、こちらのリンクを開いてね： ${PUBLIC_URL}`
+      : '友達モードの準備ができませんでした。通信のよい所で開きなおしてね。');
+    $('joinBtn').disabled = !ok;
+  });
+}
+
+// 合言葉はそろえて比べる（全角の数字・英字やスペースのちがいは同じとみなす）
+function normCode(v) {
+  return String(v || '').normalize('NFKC').toLowerCase().replace(/\s+/g, '').replace(/[\u0000-\u001f]/g, '').slice(0, 12);
+}
+
+// みんなが開いている同じページの「ロビー」に、合言葉つきで顔を出す。
+// 同じ合言葉の人だけを仲間として扱う（合言葉ごとの別部屋は使わない）
+async function joinRoom() {
+  const code = normCode($('codeInput').value);
+  if (!code) { lobbyStatus('合言葉を入れてね。'); return; }
+  if (!net.base && (window.claude || !window.Peer)) return;
+  $('codeInput').value = code;
+  store.set('kankeri-code', code);
+  $('joinBtn').disabled = true;
+  let r = net.base;
+  if (!r) { try { r = makeP2PRoom(code); } catch (e) { $('joinBtn').disabled = false; lobbyStatus('つなげませんでした。少しして、もう一度ためしてね。'); return; } }
+  net.room = r; net.code = code; net.joined = true; net.t0 = Date.now();
+  const pres = { v: 1, rc: code, n: myName(), t0: net.t0, gid: null, g: null, wo: role === 'oni' ? 1 : 0, f: faceSmall || null };
+  try { await r.presence(pres); }
+  catch (e) {
+    net.room = null; net.joined = false; $('joinBtn').disabled = false;
+    lobbyStatus(e && e.code === 'not_granted' ? 'この開き方では友達モードにつなげません。claude.ai にログインして、招待されたリンクから開いてね。' : `つなげませんでした（${(e && e.code) || 'エラー'}）。少しして、もう一度ためしてね。`);
+    return;
+  }
+  const onErr = (e) => { net.connErr = e && e.code; renderNetInfo(); };
+  net.unsubPeers = r.onPeers(() => { if (!$('lobby').hidden) renderLobby(); renderNetInfo(); }, onErr);
+  net.unsubConn = r.onConnection((c) => { net.connected = c; renderNetInfo(); }, onErr);
+  show('lobbyJoin', false); show('lobbyRole', true);
+  renderLobby();
+}
+
+function leaveRoom() {
+  if (net.unsubPeers) net.unsubPeers();
+  if (net.unsubConn) net.unsubConn();
+  net.unsubPeers = net.unsubConn = null;
+  if (net.room && net.room.p2p) net.room.leave();
+  else if (net.room) net.room.presence({ v: null, rc: null, g: null, gid: null, x: null, y: null }).catch(() => {});
+  net.room = null; net.joined = false; net.isHost = false; net.hostPeer = null; net.gameId = null; net.startedId = null;
+  renderNetInfo();
+}
+
+// つながり具合（つながらないときに理由がわかるように）
+function renderNetInfo() {
+  const el = $('netInfo');
+  if (!el) return;
+  if (!net.joined || !net.room) { el.textContent = ''; return; }
+  const all = net.room.peers().filter((p) => p.kind === 'viewer');
+  const others = all.filter((p) => !p.sameTab);
+  const sameCode = roomPeers().filter((p) => !p.sameTab).length;
+  const otherCodes = others.filter((p) => p.presence && p.presence.v === 1 && p.presence.rc !== net.code).map((p) => `「${String(p.presence.rc || '').slice(0, 12)}」`);
+  let t = net.connErr ? `通信エラー（${net.connErr}）。ページを開きなおしてね。` : (net.connected === false ? '⏳ つないでいます…' : '🟢 つながっています。');
+  t += ` このページを開いている人：あなたをふくめて ${all.length} 人`;
+  if (sameCode) t += `（同じ合言葉 ${sameCode + 1} 人）`;
+  if (otherCodes.length) t += `。ちがう合言葉の人がいます：${[...new Set(otherCodes)].slice(0, 3).join(' ')}`;
+  else if (!others.length && net.connected) t += net.room.p2p ? '。友達が同じ合言葉で入るのを待っています。' : `。友達が見えないときは、同じリンクを開いているか、共有で招待されてログインしているかを確かめてね。LINE でさそうときは ${PUBLIC_URL} を送ってね。`;
+  if (net.room.p2p && net.connected === false) t = '⏳ インターネットでつないでいます…（時間がかかるときは Wi-Fi でためしてね）';
+  el.textContent = t;
+}
+
+function roomPeers() {
+  if (!net.room) return [];
+  return net.room.peers().filter((p) => p.kind === 'viewer' && p.presence && p.presence.v === 1 && normCode(p.presence.rc) === net.code);
+}
+function findPeer(peer) { return net.room ? net.room.peers().find((p) => p.peer === peer) : null; }
+function computeHost() {
+  const ps = roomPeers().slice().sort((a, b) => (num(a.presence.t0, 9e15) - num(b.presence.t0, 9e15)) || (a.peer < b.peer ? -1 : 1));
+  const me = net.room ? net.room.peers().find((p) => p.sameTab) : null;
+  net.me = me ? me.peer : null;
+  net.hostPeer = ps.length ? ps[0].peer : null;
+  net.isHost = !!net.me && net.hostPeer === net.me;
+  return ps;
+}
+const cleanName = (s) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f]/g, '').slice(0, 8) : '') || 'だれか';
+
+function renderLobby() {
+  if (!net.joined) return;
+  const ps = computeHost();
+  const ul = $('members');
+  ul.textContent = '';
+  const oniPeer = (ps.find((p) => p.presence.wo === 1) || {}).peer;
+  for (const p of ps) {
+    const li = document.createElement('li');
+    const src = okFace(p.presence.f) ? p.presence.f : null;
+    const pic = document.createElement(src ? 'img' : 'span');
+    if (src) { pic.src = src; pic.alt = ''; } else pic.className = 'noface';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = cleanName(p.presence.n);
+    li.append(pic, nm);
+    const tag = (cls, t) => { const e = document.createElement('span'); e.className = 'tag ' + cls; e.textContent = t; li.append(e); };
+    if (p.peer === oniPeer) tag('oni', '👹 鬼');
+    else if (p.presence.wo === 1) tag('oni', '鬼希望');
+    if (p.peer === net.hostPeer) tag('', 'ホスト');
+    if (p.sameTab) tag('me', 'あなた');
+    ul.append(li);
+  }
+  const host = ps.find((p) => p.peer === net.hostPeer);
+  const hg = host && host.presence.g;
+  show('hostStartBtn', net.isHost);
+  const oniText = oniPeer ? `鬼は ${cleanName((ps.find((p) => p.peer === oniPeer) || {}).presence.n)}。` : '鬼は CPU。';
+  if (net.isHost) lobbyStatus(`合言葉「${net.code}」の部屋。${oniText}みんなそろったらスタートしてね。`);
+  else if (hg && hg.ph === 'play' && !(Array.isArray(hg.pl) && hg.pl.includes(net.me))) lobbyStatus('いまゲーム中です。おわったら次から参加できます。');
+  else lobbyStatus(`合言葉「${net.code}」の部屋。${oniText}ホストのスタートを待っています…`);
+}
+
+// ホスト：ゲーム開始
+function hostStart() {
+  const ps = computeHost();
+  if (!net.isHost) return;
+  const seed = (Math.random() * 1e9) | 0;
+  net.gameId = Math.random().toString(36).slice(2, 10);
+  net.players = ps.map((p) => p.peer);
+  const oniPeer = (ps.find((p) => p.presence.wo === 1) || {}).peer || null;
+  net.oniPeer = oniPeer;
+  let oniP = null;
+  const players = [];
+  ps.forEach((p, i) => {
+    const o = {
+      key: p.peer, peer: p.peer, name: p.sameTab ? myName() : cleanName(p.presence.n),
+      color: HUMAN_COLORS[i % HUMAN_COLORS.length], kind: p.sameTab ? 'local' : 'remote',
+      faceSrc: p.sameTab ? null : (okFace(p.presence.f) ? p.presence.f : null),
+    };
+    if (p.peer === oniPeer) oniP = o; else players.push(o);
+  });
+  mode = 'host';
+  newSim(seed, difficulty, players, oniP);
+  enterGame();
+  net.startedId = net.gameId;
+  netSendNow();
+}
+
+function readRemote(h) {
+  const p = findPeer(h.peer);
+  if (!p) {
+    if (!h.out) { h.out = true; h.state = 'out'; showMsg(`${h.name}がぬけた`, '#cfe8ff', 1.6); }
+    return;
+  }
+  const pr = p.presence || {};
+  if (pr.gid !== net.gameId) return;
+  h.light = !!pr.l && !h.out;
+  const th = num(pr.th, 0);
+  while (h.thSeen < th) { h.thSeen++; h.face = num(pr.a, 0) / 100; throwPoop(h); }
+  h.face = num(pr.a, 0) / 100;
+  if (h.caught || h.out) { h.moving = false; return; }
+  h.x = clamp(num(pr.x, h.x), 30, WORLD_W - 30); h.y = clamp(num(pr.y, h.y), 30, WORLD_H - 30);
+  h.moving = !!pr.m;
+}
+function readRemoteOni(lookOnly) {
+  const { oni } = game;
+  const p = findPeer(oni.peer);
+  if (!p) { oni.playerOut = true; oniTakeover(`鬼の${oni.name}がぬけた… CPU の鬼が交代！`); return; }
+  const pr = p.presence || {};
+  if (pr.gid !== net.gameId) return;
+  if (lookOnly) { oni.face = num(pr.a, oni.face * 100) / 100; return; }
+  oni.x = clamp(num(pr.x, oni.x), 30, WORLD_W - 30); oni.y = clamp(num(pr.y, oni.y), 30, WORLD_H - 30);
+  oni.face = num(pr.a, 0) / 100; oni.light = !!pr.l; oni.moving = !!pr.m;
+}
+
+function worldPacket() {
+  const g = game, r = Math.round, o = g.oni;
+  const st = {};
+  for (const h of g.hiders) if (h.kind !== 'cpu') st[h.peer] = [stCode(h), r(h.x), r(h.y), h.kicks, h.poop];
+  return {
+    id: net.gameId, seed: g.seed, d: g.diff, ph: g.over ? 'end' : 'play', pl: net.players, oni: net.oniPeer || null,
+    end: g.over ? { r: g.endReason, free: g.hiders.filter((h) => !h.caught && !h.out).length } : null,
+    w: {
+      t: r(g.time * 10),
+      o: [r(o.x), r(o.y), r(o.face * 100), ONI_CODE[o.state] ?? 1, r(o.look * 100), r((o.t || 0) * 10), o.light ? 1 : 0, o.playerOut ? 1 : 0, o.ctrl === 'cpu' ? 0 : 1, o.moving ? 1 : 0, r(Math.max(0, o.stun) * 10)],
+      c: [r(g.can.x), r(g.can.y), CAN_CODE[g.can.state]],
+      pp: g.poops.slice(-6).map((p) => [r(p.x), r(p.y), p.landed ? 1 : 0, r(p.d), p.hit ? 1 : 0]),
+      gh: g.ghosts.map((q) => [r(q.x), r(q.y)]),
+      cpu: g.hiders.filter((h) => h.kind === 'cpu').map((h) => [r(h.x), r(h.y), stCode(h), h.idx, r(h.face * 100), h.moving ? 1 : 0]),
+      st,
+      m: [g.msgId, g.msg, g.msgColor, r(Math.max(0, g.msgT) * 10)],
+      s: [g.sfxId, g.sfxName],
+    },
+  };
+}
+function netSendNow() {
+  if (!net.room || !game) return;
+  const patch = { gid: net.gameId, g: worldPacket(), a: Math.round(ctl.yaw * 100), l: ctl.light ? 1 : 0 };
+  const me = game.localOni ? game.oni : game.hiders.find((h) => h.kind === 'local');
+  if (me) { patch.x = Math.round(me.x); patch.y = Math.round(me.y); patch.m = me.moving ? 1 : 0; }
+  net.room.presence(patch).catch(() => {});
+}
+
+// 毎フレームの通信
+function netTick(now) {
+  if (!net.room || !net.joined) return;
+  if (mode === 'host') {
+    if (now - net.lastSend > 70) { net.lastSend = now; netSendNow(); }
+    return;
+  }
+  const ps = computeHost();
+  const host = ps.find((p) => p.peer === net.hostPeer);
+  const hg = host && host.presence && host.presence.g;
+  const newGame = hg && hg.ph === 'play' && hg.id && hg.id !== net.startedId && Array.isArray(hg.pl) && hg.pl.includes(net.me);
+  if (mode !== 'client') {
+    if (!net.isHost && newGame) startClient(hg);
+    return;
+  }
+  if (!host || net.isHost) { abortClient('ホストがいなくなったので、ゲームをおわりました。'); return; }
+  if (newGame) { startClient(hg); return; }
+  if (!hg || hg.id !== net.gameId) { if (!net.ended) abortClient('ゲームがおわりました。'); return; }
+  applyWorld(hg, host);
+  if (now - net.lastSend > 60 && net.local) {
+    net.lastSend = now;
+    const L = net.local;
+    net.room.presence({ gid: net.gameId, x: Math.round(L.x), y: Math.round(L.y), a: Math.round(ctl.yaw * 100), m: L.moving ? 1 : 0, l: ctl.light && !L.out ? 1 : 0, th: net.throws }).catch(() => {});
+  }
+}
+
+function startClient(hg) {
+  mode = 'client';
+  game = null;
+  net.gameId = hg.id; net.startedId = hg.id;
+  net.seenMsg = -1; net.seenSfx = -1;
+  net.myRole = hg.oni === net.me ? 'oni' : 'hider';
+  buildMap(num(hg.seed, 1) | 0);
+  const myIdx = Math.max(0, hg.pl.indexOf(net.me));
+  net.local = makeChar({ key: net.me, name: myName(), color: HUMAN_COLORS[myIdx % HUMAN_COLORS.length], kind: 'local' });
+  if (net.myRole === 'oni') {
+    net.local.x = HOME.x; net.local.y = HOME.y - 24; ctl.yaw = Math.PI / 2;
+  } else {
+    const sp = hg.w && hg.w.st && hg.w.st[net.me];
+    net.local.x = sp ? num(sp[1], HOME.x) : HOME.x; net.local.y = sp ? num(sp[2], HOME.y - 60) : HOME.y - 60;
+    ctl.yaw = Math.atan2(net.local.y - HOME.y, net.local.x - HOME.x);
+  }
+  ctl.pitch = -0.05; ctl.light = false;
+  net.throws = 0; net.poopHold = 0; view.myPoop = 1;
+  net.diff = clamp(num(hg.d, 1) | 0, 0, 2);
+  view.vision = DIFF[net.diff].vision;
+  net.disp = { oni: null, can: null, ghosts: [], remote: new Map() };
+  view.kids = []; view.ghosts = []; view.msgT = 0;
+  enterGame();
+  sfx.start();
+}
+
+function applyWorld(hg, host) {
+  const w = hg.w || {};
+  const pl = Array.isArray(hg.pl) ? hg.pl.slice(0, 16) : [];
+  const st = w.st || {};
+  const L = net.local;
+  const amOni = net.myRole === 'oni';
+  const o = Array.isArray(w.o) ? w.o : [HOME.x, HOME.y, 0, 0, 0, 0, 1, 0, 0, 0];
+  let code = 0;
+  if (amOni) {
+    const out = num(o[7]) === 1;
+    if (out && !L.out) { L.out = true; sfx.ghost(); onLocalDeath(); }
+    if (num(o[3]) === 0) { L.x = num(o[0], L.x); L.y = num(o[1], L.y); }
+    code = out ? 3 : 0;
+  } else {
+    const mySt = Array.isArray(st[net.me]) ? st[net.me] : [0];
+    code = num(mySt[0], 0);
+    if (code === 2) { L.x = num(mySt[1], L.x); L.y = num(mySt[2], L.y); L.caught = true; }
+    else L.caught = false;
+    if (code === 3 && !L.out) { L.out = true; sfx.ghost(); onLocalDeath(); }
+    L.kicks = num(mySt[3], 0);
+    if (performance.now() - (net.poopHold || 0) > 1500) view.myPoop = num(mySt[4], 0);
+  }
+  // 鬼
+  const onip = hg.oni ? (hg.oni === host.peer ? host : findPeer(hg.oni)) : null;
+  const onipr = (onip && onip.presence) || {};
+  const humanOni = num(o[8]) === 1;
+  if (amOni && !L.out) {
+    view.oni = { key: 'oni', name: myName(), x: L.x, y: L.y, fa: ctl.yaw, look: 0, st: num(o[3]), t: num(o[5]) / 10, light: ctl.light && !(num(o[10]) > 0), moving: L.moving, isMe: true, human: true, stun: num(o[10]) / 10 };
+  } else {
+    view.oni = { key: 'oni', name: humanOni ? cleanName(onipr.n) : 'おに', faceSrc: humanOni && okFace(onipr.f) ? onipr.f : null,
+      x: num(o[0], HOME.x), y: num(o[1], HOME.y), fa: num(o[2]) / 100, st: num(o[3]), look: num(o[4]) / 100, t: num(o[5]) / 10,
+      light: num(o[6]) === 1 && !(num(o[10]) > 0), moving: num(o[9]) === 1 && !(num(o[10]) > 0), isMe: false, meOut: amOni && L.out, human: humanOni, stun: num(o[10]) / 10 };
+    if (humanOni && onip && onipr.gid === net.gameId && num(o[3]) !== 0 && !(num(o[10]) > 0)) { view.oni.x = num(onipr.x, view.oni.x); view.oni.y = num(onipr.y, view.oni.y); view.oni.fa = num(onipr.a) / 100; view.oni.light = !!onipr.l; view.oni.moving = !!onipr.m; }
+  }
+  const c = Array.isArray(w.c) ? w.c : [HOME.x, HOME.y, 0];
+  view.can = { x: num(c[0], HOME.x), y: num(c[1], HOME.y), st: num(c[2]), spin: (view.can.spin || 0) + 0.3 };
+  view.ghosts = (Array.isArray(w.gh) ? w.gh : []).slice(0, 30).map((q) => ({ x: num(q && q[0]), y: num(q && q[1]) }));
+  view.time = num(w.t, 0) / 10;
+  view.myKicks = L.kicks;
+  view.poops = (Array.isArray(w.pp) ? w.pp : []).slice(0, 8).filter(Array.isArray).map((q) => ({ x: num(q[0]), y: num(q[1]), f: num(q[2]), d: num(q[3]), t: 0, hit: num(q[4]) === 1 }));
+  // 子どもたち
+  const kids = [];
+  pl.forEach((peer, i) => {
+    if (peer === hg.oni) return;
+    const s = Array.isArray(st[peer]) ? st[peer] : [0, HOME.x, HOME.y, 0];
+    const color = HUMAN_COLORS[i % HUMAN_COLORS.length];
+    const sc = num(s[0]);
+    if (peer === net.me) {
+      kids.push({ key: peer, name: myName(), color, isMe: true, x: L.x, y: L.y, fa: ctl.yaw, moving: L.moving, st: sc, kind: 'local', light: ctl.light });
+      return;
+    }
+    const p = peer === host.peer ? host : findPeer(peer);
+    const pr = (p && p.presence) || {};
+    let x = num(s[1], HOME.x), y = num(s[2], HOME.y), fa = num(pr.a, 0) / 100, mv = false;
+    if (sc < 2 && p && pr.gid === net.gameId) { x = num(pr.x, x); y = num(pr.y, y); mv = !!pr.m; }
+    kids.push({ key: peer, name: cleanName(pr.n), color, faceSrc: okFace(pr.f) ? pr.f : null, x, y, fa, moving: mv, st: sc, kind: 'remote', light: !!pr.l && sc !== 3 });
+  });
+  for (const q of (Array.isArray(w.cpu) ? w.cpu : []).slice(0, 8)) {
+    if (!Array.isArray(q)) continue;
+    const idx = clamp(num(q[3]) | 0, 0, CPU_NAMES.length - 1);
+    kids.push({ key: 'cpu' + idx, name: CPU_NAMES[idx], color: CPU_COLORS[idx], x: num(q[0]), y: num(q[1]), st: num(q[2]), fa: num(q[4]) / 100, moving: !!q[5], kind: 'cpu', light: false });
+  }
+  // なめらかに動かす（自分以外）
+  const D = net.disp;
+  const smooth = (prev, cur, k) => { if (prev && Math.hypot(prev.x - cur.x, prev.y - cur.y) < 200) { cur.x = lerp(prev.x, cur.x, k); cur.y = lerp(prev.y, cur.y, k); } return { x: cur.x, y: cur.y }; };
+  for (const kd of kids) if (!kd.isMe) D.remote.set(kd.key, smooth(D.remote.get(kd.key), kd, 0.3));
+  if (!view.oni.isMe) D.oni = smooth(D.oni, view.oni, 0.3);
+  view.ghosts.forEach((g, i) => { D.ghosts[i] = smooth(D.ghosts[i], g, 0.25); });
+  if (view.can.st !== 1) D.can = smooth(D.can, view.can, 0.3); else D.can = { x: view.can.x, y: view.can.y };
+  view.kids = kids;
+  // メッセージと音
+  const m = Array.isArray(w.m) ? w.m : null;
+  if (m && m[0] !== net.seenMsg) {
+    net.seenMsg = m[0];
+    view.msg = String(m[1] || '').slice(0, 60);
+    view.msgColor = /^#[0-9a-f]{3,6}$/i.test(m[2]) ? m[2] : '#fff';
+    view.msgT = num(m[3], 16) / 10;
+  }
+  const s = Array.isArray(w.s) ? w.s : null;
+  if (s && s[0] !== net.seenSfx) {
+    const first = net.seenSfx === -1;
+    net.seenSfx = s[0];
+    if (!first && ['kick', 'spot', 'catch', 'splat', 'wake', 'toss'].includes(s[1])) { sfx[s[1]](); if (s[1] === 'kick') fxKick(view.can.x, view.can.y); }
+  }
+  if (hg.ph === 'end' && hg.end && !net.ended) {
+    net.ended = true;
+    showResult(String(hg.end.r), code, num(hg.end.free), L.kicks, myName(), net.myRole);
+  }
+}
+
+function clientUpdate(dt) {
+  const L = net.local;
+  if (!L) return;
+  if (dt > 0 && view.msgT > 0) view.msgT -= dt;
+  const amOni = net.myRole === 'oni';
+  if (dt > 0) {
+    const frozen = amOni && (view.oni.st === 0 || view.oni.stun > 0);
+    if (!L.caught && !L.out && !net.ended && !frozen) {
+      const v = moveInput(dt);
+      const sp = amOni ? ONI_SPEED : SPEED;
+      moveChar(L, v.x * sp, v.y * sp, dt, false);
+      L.moving = !!(v.x || v.y);
+    } else L.moving = false;
+  }
+  L.face = ctl.yaw;
+  if (amOni && !L.out && dt > 0 && view.oni.stun > 0) view.oni.stun = Math.max(0, view.oni.stun - dt);
+  if (amOni && !L.out) { view.oni.x = L.x; view.oni.y = L.y; view.oni.fa = ctl.yaw; view.oni.light = ctl.light; view.oni.moving = L.moving; }
+  const me = view.kids.find((k) => k.isMe);
+  if (me) { me.x = L.x; me.y = L.y; me.fa = ctl.yaw; me.moving = L.moving; me.light = ctl.light; }
+}
+
+function abortClient(text) {
+  mode = null; net.local = null; game = null;
+  exitGameUI();
+  openLobby();
+  lobbyStatus(text);
+}
+
+// =====================================================================
+//  画面の流れ
+// =====================================================================
+function enterGame() {
+  for (const id of ['title', 'lobby', 'resultModal', 'deadModal', 'pauseModal', 'spectate']) show(id, false);
+  spectating = false; specIndex = 0; paused = false; net.ended = false; lastSt = new Map();
+  buildWorld();
+  if (game) viewFromSim();
+  hud.hidden = false;
+  show('pauseBtn', mode === 'solo');
+  show('muteBtn', true);
+  $('muteBtn').style.right = mode === 'solo' ? '' : 'max(12px, env(safe-area-inset-right, 0px))';
+  const hint = $('hint');
+  hint.textContent = isTouch ? '左はんぶん：歩く ／ 右はんぶん：見まわす ／ 🔦：ライト ／ 💩：投げる' : 'WASD：歩く ／ クリックしてマウス：見まわす ／ F：ライト ／ G：金のうんこ';
+  hint.hidden = false; hint.style.opacity = 1;
+  clearTimeout(enterGame.t);
+  enterGame.t = setTimeout(() => { hint.style.opacity = 0; setTimeout(() => { hint.hidden = true; }, 700); }, 6000);
+}
+function exitGameUI() {
+  hud.hidden = true; msgEl.style.opacity = 0;
+  for (const id of ['resultModal', 'deadModal', 'pauseModal', 'spectate', 'pauseBtn', 'lightBtn', 'poopBtn', 'blind', 'hint', 'warn', 'muteBtn']) show(id, false);
+  spectating = false;
+  joy.id = null; look.id = null;
+  $('vignette').style.opacity = 0;
+  if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
+}
+
+function startSolo() {
+  if (net.joined) leaveRoom();
+  store.set('kankeri-name', nameInput.value.trim());
+  mode = 'solo';
+  const me = { key: 'me', name: myName(), color: HUMAN_COLORS[0], kind: 'local' };
+  if (role === 'oni') newSim((Math.random() * 1e9) | 0, difficulty, [], { kind: 'local', name: myName(), faceSrc: null });
+  else newSim((Math.random() * 1e9) | 0, difficulty, [me], null);
+  enterGame();
+}
+
+function toTitle() {
+  if (net.joined) leaveRoom();
+  mode = null; game = null; net.local = null; paused = false;
+  exitGameUI();
+  show('lobby', false);
+  show('title', true);
+  if (world) { scene.remove(world); world = null; oniMesh = null; }
+}
+
+function onLocalDeath() {
+  joy.id = null; look.id = null; keys.clear(); ctl.light = false;
+  if (mode === 'solo') paused = true;
+  if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
+  setTimeout(() => {
+    if (!mode) return;
+    $('deadText').textContent = `${myName()}はたましいを抜かれてしまった。（のこり ${fmtTime(view.time)}）`;
+    $('quitBtn').textContent = mode === 'host' ? 'やめる（みんなのゲームもおわります）' : 'やめる';
+    show('deadModal', true);
+  }, 700);
+}
+
+function showResult(reason, myCode, free, kicks, name, myRole) {
+  let emoji, title, text;
+  if (myRole === 'oni') {
+    if (reason === 'oni') { emoji = myCode === 3 ? '👻' : '👹'; title = myCode === 3 ? '鬼チームの勝ち（観戦おわり）' : '鬼の勝ち！ 全員つかまえた'; text = 'みんなつかまえた！'; }
+    else { emoji = '😵'; title = 'にげられた…'; text = `時間切れ！ ${free}人が逃げきった。`; }
+  } else if (myCode === 3) {
+    emoji = '👻'; title = reason === 'oni' ? '鬼の勝ち（観戦おわり）' : '観戦おわり';
+    text = reason === 'oni' ? 'みんなつかまってしまった。' : `時間切れ！ ${free}人が逃げきった。`;
+  } else if (reason === 'time' && myCode !== 2) {
+    emoji = '🎉'; title = '逃げきった！';
+    text = `${name}の勝ち！ 一緒に逃げきった子：${free}人`;
+  } else {
+    emoji = '😈'; title = '鬼の勝ち…';
+    text = reason === 'oni' ? 'みんなつかまってしまった。' : `${name}はつかまったまま時間切れ。`;
+  }
+  setTimeout(() => {
+    if (!mode) return;
+    if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
+    $('resultEmoji').textContent = emoji;
+    $('resultTitle').textContent = title;
+    $('resultText').textContent = '';
+    if (myRole === 'oni') $('resultText').append(text);
+    else $('resultText').append(text, document.createElement('br'), `缶を蹴った回数：${kicks}回`);
+    $('againBtn').textContent = mode === 'solo' ? 'もういちど' : '部屋にもどる';
+    show('deadModal', false);
+    show('resultModal', true);
+    show('spectate', false);
+    show('pauseBtn', false);
+  }, 900);
+}
+
+function togglePause() {
+  if (mode !== 'solo' || !game) return;
+  const s = myViewState();
+  if (s.st === 3 && !spectating) return;
+  paused = !paused; show('pauseModal', paused);
+  if (paused && document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
+}
+
+$('startBtn').addEventListener('click', startSolo);
+$('muteBtn').addEventListener('click', () => bgmSetOn(!bgm.on));
+$('titleBgm').addEventListener('click', () => bgmSetOn(!bgm.on));
+renderBgmBtns();
+$('friendBtn').addEventListener('click', () => { store.set('kankeri-name', nameInput.value.trim()); openLobby(); });
+$('joinBtn').addEventListener('click', joinRoom);
+$('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(); });
+$('hostStartBtn').addEventListener('click', hostStart);
+$('lobbyBack').addEventListener('click', toTitle);
+$('againBtn').addEventListener('click', () => {
+  if (mode === 'solo') return startSolo();
+  const wasHost = mode === 'host';
+  mode = null; game = null; net.local = null;
+  exitGameUI();
+  if (wasHost && net.room) net.room.presence({ g: null, gid: null }).catch(() => {});
+  openLobby();
+});
+$('toTitleBtn').addEventListener('click', toTitle);
+$('quitBtn').addEventListener('click', toTitle);
+$('specQuit').addEventListener('click', toTitle);
+$('pauseQuitBtn').addEventListener('click', toTitle);
+$('resumeBtn').addEventListener('click', togglePause);
+$('pauseBtn').addEventListener('click', togglePause);
+$('watchBtn').addEventListener('click', () => {
+  show('deadModal', false);
+  spectating = true; specIndex = 0;
+  if (mode === 'solo') paused = false;
+  show('spectate', true); show('hint', false); show('poopBtn', false);
+});
+$('specPrev').addEventListener('click', () => { const n = Math.max(1, specList().length); specIndex = (specIndex - 1 + n) % n; });
+$('specNext').addEventListener('click', () => { specIndex = (specIndex + 1) % Math.max(1, specList().length); });
+
+// ---------- タイトル画面のうしろの景色（缶のそばで、ぐるっと見まわす） ----------
+let titleT0 = 0;
+function titleScene(t) {
+  if (!has3D) return;
+  if (!world) {
+    buildMap(12345); buildWorld(); titleT0 = t;
+    view.kids = []; view.vision = DIFF[1].vision; view.can = { x: HOME.x, y: HOME.y, st: 0, spin: 0 };
+    view.ghosts = [{ x: HOME.x - 330, y: HOME.y - 160 }, { x: HOME.x + 350, y: HOME.y + 60 }, { x: HOME.x + 30, y: HOME.y + 330 }];
+    view.oni = { key: 'oni', name: 'おに', x: HOME.x + 260, y: HOME.y - 200, fa: 0, look: 0, st: 1, t: 0, light: true, moving: true };
+  }
+  const tt = t - titleT0;
+  view.ghosts.forEach((g, i) => { g.x += Math.cos(tt * 0.4 + i * 2) * 0.6; g.y += Math.sin(tt * 0.3 + i) * 0.5; });
+  view.oni.x = HOME.x + Math.cos(tt * 0.15) * 300; view.oni.y = HOME.y + Math.sin(tt * 0.15) * 260;
+  view.oni.fa = tt * 0.15 + Math.PI / 2 + Math.sin(tt) * 0.5;
+  ctl.yaw = tt * 0.12; ctl.pitch = -0.04;
+}
+
+// ---------- メインループ ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const t = now / 1000;
+  if ((mode === 'solo' || mode === 'host') && game) {
+    if (!paused) simUpdate(dt);
+    viewFromSim();
+  } else if (mode === 'client') {
+    clientUpdate(dt);
+  } else {
+    titleScene(t);
+  }
+  netTick(now);
+  if (mode === 'client') clientUpdate(0);
+  if (!mode) render3DTitle(dt, t);
+  else render3D(paused ? 0 : dt, t);
+  renderUI();
+  if (mode) { updateHud(); updateDanger(dt); }
+  bgmUpdate(dt);
+  requestAnimationFrame(loop);
+}
+function render3DTitle(dt, t) {
+  // タイトルでは、缶のそばに立っている目線
+  const saved = view.kids;
+  view.kids = [];
+  eyeTargetOverride = { key: '-', x: HOME.x, y: HOME.y + 40, yaw: ctl.yaw, pitch: ctl.pitch, eye: 1.25, light: false, own: false };
+  render3D(dt, t);
+  eyeTargetOverride = null;
+  view.kids = saved;
+}
+
+setFace(store.get('kankeri-face'));
+initThree();
+resize();
+$('loading').hidden = true;
+if (!has3D) { $('loading').hidden = false; $('loading').textContent = '3D の表示ができませんでした。別のブラウザでためしてね。'; }
+requestAnimationFrame(loop);
+
+// テスト用
+window.__kankeri = { bgm, get game() { return game; }, get view() { return view; }, get net() { return net; }, ctl, startSolo, simUpdate, spirit, spiritOni, setRole: (r) => { role = r; renderSeg(); } };
+})();
+</script>
+</body>
+</html>
