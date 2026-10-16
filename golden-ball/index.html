@@ -264,7 +264,7 @@
 
     <span class="field">モード</span>
     <div class="seg3" id="modeSeg"></div>
-    <div class="seg2" id="ruleSeg" style="margin-top:6px"></div>
+    <div class="seg3" id="ruleSeg" style="margin-top:6px"></div>
     <div id="soloTeamBox" style="margin-top:6px"></div>
     <span class="field">CPU のつよさ</span>
     <div class="seg" id="diffSeg"></div>
@@ -282,6 +282,7 @@
       <ul>
         <li>最大6人で撃ち合い！（人数は 4・5・6 人から選べて、足りない分は CPU）先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
         <li>👥 チーム戦（2対2）：赤チームと青チームに分かれて、先にチームで <b>12人</b> たおした方の勝ち。味方は撃っても当たりません。</li>
+        <li>💈 バリカンのみ：みんなロン毛からスタート！バリカンで刈られるほど短くなって、ボーズになったら負け。🦱カツラで髪がのびる。まん中のゴールデンボールはゴールデンバリカン（一発でボーズ）。</li>
         <li>🔪 接近戦のみ：銃なし！みんなナイフで始まり、宝箱から 🗡剣 や ✨🪚金のチェーンソー（15秒・最強）が出ます。</li>
         <li>💬 スタンプ：試合中は 💬 ボタン、作戦会議室は下のボタンから。「よろしくお願いします」「www」などを頭の上に出せます。</li>
         <li>🛡 配信する時は、作戦会議室の「メンバー管理」でキック・ブロック・顔写真をかくす・締め切りができます。合言葉はタップでかくせます。</li>
@@ -343,7 +344,7 @@
       <div class="seg3" id="lobbySizeSeg"></div>
       <span class="field">モード（チームは下のリストの色ボタンで入れかえ）</span>
       <div class="seg3" id="lobbyModeSeg"></div>
-      <div class="seg2" id="lobbyRuleSeg" style="margin-top:6px"></div>
+      <div class="seg3" id="lobbyRuleSeg" style="margin-top:6px"></div>
       <span class="field">🎁 宝箱の中身（チェックしたものだけ出ます）</span>
       <div class="chips" id="lobbyLootChips"></div>
       <button class="secondary" id="modBtn">🛡 メンバー管理（キック・ブロック・締め切り）</button>
@@ -539,8 +540,12 @@ const MELEE = {
   knife: { name: 'ナイフ', icon: '🔪', dmg: 25, head: 35, cd: 0.38, range: 1.7, arc: 0.6 },
   sword: { name: '剣', icon: '🗡', dmg: 50, head: 65, cd: 0.55, range: 2.4, arc: 0.85 },
   saw: { name: '金のチェーンソー', icon: '🪚', dmg: 16, head: 22, cd: 0.1, range: 2.1, arc: 0.8, fuel: 15 },
+  clip: { name: 'バリカン', icon: '💈', dmg: 20, head: 20, cd: 0.28, range: 1.9, arc: 0.85 }, // 5 回でボーズ
 };
-const RULES = { gun: '🔫 銃あり', melee: '🔪 接近戦のみ' };
+const RULES = { gun: '🔫 銃あり', melee: '🔪 接近戦のみ', clip: '💈 バリカンのみ' };
+const meleeRule = () => !!game && (game.rule === 'melee' || game.rule === 'clip'); // 近づいて戦うルール
+const baseWeapon = () => (game && game.rule === 'clip' ? 'clip' : 'knife');
+const HAIR_COLORS = ['#1a1410', '#3b2416', '#5a3a1e', '#c9a46a', '#2a2a2a', '#7a3b8f'];
 const MODES = { ffa: '個人戦', '2v2': 'チーム 2対2', '3v1': '3対1 ボス戦' };
 const TEAM_WIN = 12, BOSS_TAKE = 0.4;
 const TEAM_COLORS = ['#a8302a', '#2a4f9a'], TEAM_NAMES = ['🔴 赤チーム', '🔵 青チーム'];
@@ -771,12 +776,53 @@ function crack(ctx, r, x, y, len, width) {
   ctx.stroke();
 }
 // hp に合わせて顔を描く。d = ダメージ度 0〜1
+// バリカンモード：髪の長さ（体力）ごとの段階  3=ロン毛 2=セミロング 1=ショート 0.5=坊主寸前 0=ボーズ
+const hairStage = (hp) => (hp > 75 ? 3 : hp > 50 ? 2 : hp > 25 ? 1 : hp > 0 ? 0.5 : 0);
+function drawHairFront(ctx, who, hp) {
+  const st = hairStage(hp), col = who.hairCol || '#2a1d14';
+  ctx.save();
+  if (st >= 1) {
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(-4, -4); ctx.lineTo(132, -4); ctx.lineTo(132, st >= 3 ? 128 : st >= 2 ? 96 : 58);
+    ctx.lineTo(116, st >= 3 ? 128 : st >= 2 ? 96 : 58); ctx.lineTo(114, 36);
+    for (let x = 112; x > 14; x -= 14) ctx.quadraticCurveTo(x - 7, 44 + ((x / 14) % 2) * 6, x - 14, 34); // ぎざぎざの前髪
+    ctx.lineTo(14, st >= 3 ? 128 : st >= 2 ? 96 : 58); ctx.lineTo(-4, st >= 3 ? 128 : st >= 2 ? 96 : 58); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 7; i++) { const x = 20 + i * 14; ctx.beginPath(); ctx.moveTo(x, 2); ctx.quadraticCurveTo(x + 4, 18, x - 2, 32); ctx.stroke(); }
+  } else if (st > 0) { // 坊主寸前：ジョリジョリ
+    ctx.fillStyle = col; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.ellipse(64, 6, 72, 34, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.8; for (let i = 0; i < 90; i++) ctx.fillRect(Math.random() * 128, Math.random() * 34, 1.5, 1.5);
+  } else { // ボーズ：つるつる
+    const skin = who.skinMat ? '#' + who.skinMat.color.getHexString() : '#e8b98f';
+    ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(64, 4, 74, 36, 0, 0, Math.PI * 2); ctx.fill();
+    const g = ctx.createRadialGradient(46, 10, 1, 46, 10, 22); g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(46, 12, 24, 10, -0.3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+// 頭のうしろにたれる髪（長さが変わる）
+function drawHairBack(e) {
+  const st = hairStage(e.hp), c = e.hairCanvas, x = c.getContext('2d');
+  x.clearRect(0, 0, c.width, c.height);
+  if (st < 1) return false;
+  const len = st >= 3 ? 300 : st >= 2 ? 230 : 160;
+  x.fillStyle = e.hairCol;
+  x.beginPath(); x.arc(128, 118, 116, Math.PI, 0); x.lineTo(244, len); x.quadraticCurveTo(128, len + 18, 12, len); x.closePath(); x.fill();
+  x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 3;
+  for (let i = 0; i < 9; i++) { const xx = 30 + i * 25; x.beginPath(); x.moveTo(xx, 60); x.quadraticCurveTo(xx + 10, len * 0.6, xx - 6, len - 6); x.stroke(); }
+  return true;
+}
 function drawFace(ctx, who, hp, dead) {
   ctx.save();
   ctx.clearRect(0, 0, FS, FS);
   const src = who.faceImg;
   if (src && (src instanceof HTMLCanvasElement || (src.complete && src.naturalWidth))) ctx.drawImage(src, 0, 0, FS, FS);
   else drawCartoon(ctx, who.seed);
+  if (who.clipMode) { // バリカンモード：ケガは描かずに髪型だけ
+    drawHairFront(ctx, who, hp);
+    if (dead) { ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText('ボーズ', 64, 118); ctx.fillStyle = '#c0392b'; ctx.fillText('ボーズ', 64, 118); }
+    ctx.restore(); return;
+  }
   const d = clamp(1 - hp / MAX_HP, 0, 1);
   const r = rng(who.seed * 31 + 7);
   const rand = () => r();
@@ -1343,6 +1389,34 @@ const goldBall = new THREE.Mesh(new THREE.SphereGeometry(0.35, 24, 16), goldMat)
 goldBall.position.set(0, 1.25, 0); scene.add(goldBall);
 const goldLight = new THREE.PointLight('#ffcc44', 1.2, 8); goldLight.position.set(0, 2, 0); scene.add(goldLight);
 const packTex = canvasTex(64, 64, (c) => { c.fillStyle = '#f4f4f0'; c.fillRect(0, 0, 64, 64); c.fillStyle = '#d82020'; c.fillRect(26, 10, 12, 44); c.fillRect(10, 26, 44, 12); });
+// 刈られた髪の毛が舞い散る
+const hairBits = [], hairGeo = new THREE.PlaneGeometry(0.025, 0.14);
+function spawnHair(e) {
+  const hy = (e.ry || 0) + BODY_TOP + HEAD_R * (e.bigS || 1);
+  const mat = new THREE.MeshBasicMaterial({ color: e.hairCol || '#2a1d14', side: THREE.DoubleSide, transparent: true });
+  for (let i = 0; i < 12; i++) {
+    const m = new THREE.Mesh(hairGeo, mat); m.position.set(e.rx + (Math.random() - 0.5) * 0.6, hy + Math.random() * 0.3, e.rz + (Math.random() - 0.5) * 0.6);
+    m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3); scene.add(m);
+    hairBits.push({ m, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: (Math.random() - 0.5) * 2, life: 1.4 });
+  }
+}
+function updateHairBits(dt) {
+  for (let i = hairBits.length - 1; i >= 0; i--) {
+    const h = hairBits[i]; h.life -= dt; h.vy -= 6 * dt;
+    h.m.position.x += h.vx * dt; h.m.position.y = Math.max(0.01, h.m.position.y + h.vy * dt); h.m.position.z += h.vz * dt; h.m.rotation.z += dt * 6;
+    h.m.material.opacity = Math.min(1, h.life * 2);
+    if (h.life <= 0) { scene.remove(h.m); hairBits.splice(i, 1); }
+  }
+}
+// カツラ（バリカンモードの回復アイテム）
+function makeWig() {
+  const g = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color: '#3b2416', roughness: 0.85, side: THREE.DoubleSide });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), mat); g.add(cap);
+  const back = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.38, 18, 1, true, Math.PI * 0.75, Math.PI * 1.5), mat); back.position.y = -0.16; g.add(back);
+  for (let i = 0; i < 6; i++) { const lock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.42, 0.04), mat); const a = Math.PI * (0.8 + i * 0.28); lock.position.set(Math.sin(a) * 0.27, -0.2, Math.cos(a) * 0.27); lock.rotation.y = a; g.add(lock); }
+  return g;
+}
+const wigMeshes = PACKS.map(([x, z]) => { const m = makeWig(); m.position.set(x, 0.75, z); m.visible = false; scene.add(m); return m; });
 const packMeshes = PACKS.map(([x, z]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), new THREE.MeshLambertMaterial({ map: packTex })); m.position.set(x, 0.5, z); scene.add(m); return m; });
 
 // 宝箱
@@ -1381,6 +1455,14 @@ function makeMelee(kind) {
   const dark = new THREE.MeshStandardMaterial({ color: '#1d1b1a', roughness: 0.7 });
   const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = true; g.add(b); return b; };
   if (kind === 'knife') { box(0.03, 0.035, 0.11, dark, 0, 0, 0.02); box(0.06, 0.012, 0.012, steel, 0, 0, -0.04); box(0.012, 0.035, 0.17, steel, 0, 0.004, -0.13); }
+  else if (kind === 'clip') { // バリカン（ゴールデンボールを持つと金色）
+    const bodyM = new THREE.MeshStandardMaterial({ color: '#f2f2f2', roughness: 0.4, metalness: 0.1 });
+    const b = box(0.07, 0.05, 0.2, bodyM, 0, 0, 0); g.userData.body = bodyM; void b;
+    box(0.075, 0.012, 0.03, dark, 0, 0.03, -0.02);
+    box(0.08, 0.02, 0.05, steel, 0, 0, -0.12);
+    for (let i = 0; i < 9; i++) box(0.006, 0.012, 0.035, steel, -0.036 + i * 0.009, -0.004, -0.155);
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.12, 6), dark); cord.rotation.x = Math.PI / 2; cord.position.z = 0.15; g.add(cord);
+  }
   else if (kind === 'sword') {
     box(0.035, 0.035, 0.15, new THREE.MeshStandardMaterial({ color: '#5a3518', roughness: 0.8 }), 0, 0, 0.04);
     box(0.2, 0.03, 0.035, gold, 0, 0, -0.04);
@@ -1433,6 +1515,7 @@ function makeItemMesh(k) {
     for (let i = 0; i < 7; i++) { const a = i * 2.4, r = i ? 0.2 : 0; const dot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshStandardMaterial({ color: '#fff' })); dot.position.set(Math.cos(a) * r, 0.12 + (i ? 0.15 : 0.24), Math.sin(a) * r); g.add(dot); }
   } else if (k === 'sword' || k === 'saw') { const w = makeMelee(k); w.scale.setScalar(1.5); w.rotation.set(0.4, 0, Math.PI / 2); g.add(w); }
   else if (k === 'wing') { const w = makeWings(); w.children.forEach((c) => { c.rotation.y = c.userData.sx * 0.5; }); g.add(w); }
+  else if (game && game.rule === 'clip') { const w = makeWig(); w.scale.setScalar(1.2); g.add(w); }
   else { const m = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.5), new THREE.MeshLambertMaterial({ map: packTex })); g.add(m); }
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 6, 24), new THREE.MeshBasicMaterial({ color: ({ ar: '#ff9a3a', med: '#ff6060', cloak: '#b48cff', mush: '#ff3b8a', wing: '#ffffff' })[k] || '#7fb0ff' }));
   ring.rotation.x = Math.PI / 2; ring.position.y = -0.45; g.add(ring);
@@ -1470,6 +1553,7 @@ const VIEW_MELEE = { // 手に持った時の見え方
   knife: { p: [0.17, -0.16, -0.36], r: [0.35, 0.2, -0.25], s: 1 },
   sword: { p: [0.22, -0.25, -0.42], r: [0.95, 0.2, -0.35], s: 0.75 },
   saw: { p: [0.2, -0.24, -0.5], r: [0.45, 0.45, -0.15], s: 0.6 },
+  clip: { p: [0.17, -0.17, -0.42], r: [0.65, 0.35, -0.35], s: 0.62 },
 };
 for (const k of Object.keys(MELEE)) {
   const m = makeMelee(k); m.visible = false; camera.add(m); viewMelee[k] = m;
@@ -1537,7 +1621,14 @@ function buildChar(e) {
   e.faceCanvas = document.createElement('canvas'); e.faceCanvas.width = e.faceCanvas.height = FS * 2;
   e.headCanvas = document.createElement('canvas'); e.headCanvas.width = e.headCanvas.height = FS * 2;
   e.faceTex = new THREE.CanvasTexture(e.headCanvas); e.faceTex.anisotropy = 4;
+  e.hairCol = HAIR_COLORS[e.seed % HAIR_COLORS.length];
+  e.hairCanvas = document.createElement('canvas'); e.hairCanvas.width = 256; e.hairCanvas.height = 330;
+  e.hairTex = new THREE.CanvasTexture(e.hairCanvas);
+  e.hairSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: e.hairTex, transparent: true, depthWrite: false }));
+  e.hairSprite.scale.set(HEAD_R * 2.7, HEAD_R * 2.7 * 330 / 256, 1); e.hairSprite.position.y = -HEAD_R * 0.62; e.hairSprite.renderOrder = 1; e.hairSprite.visible = false;
+  e.head.add(e.hairSprite);
   e.faceSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: e.faceTex, transparent: true }));
+  e.faceSprite.renderOrder = 2;
   e.faceSprite.scale.set(HEAD_R * 2.15, HEAD_R * 2.15, 1); e.head.add(e.faceSprite);
   // 影だけ落とす見えない球（頭の影）
   const shade = add(new THREE.SphereGeometry(HEAD_R * 0.9, 12, 8), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), 0, 0, 0, e.head); shade.castShadow = true;
@@ -1582,11 +1673,13 @@ function sampleColors(e) {
   if (lum < 0.45 && sat < 0.35) e.hairMat.color.setRGB(hr[0] / 255, hr[1] / 255, hr[2] / 255); else e.hairMat.color.set('#2a2420');
 }
 function refreshFace(e, force) {
-  const key = Math.ceil(e.hp / 5) + '|' + e.alive + '|' + (e.faceImg ? 1 : 0);
+  const key = Math.ceil(e.hp / 5) + '|' + e.alive + '|' + (e.faceImg ? 1 : 0) + '|' + (game ? game.rule : '');
   if (!force && key === e.faceKey) return;
   e.faceKey = key;
   const ctx = e.faceCanvas.getContext('2d');
+  e.clipMode = !!game && game.rule === 'clip';
   ctx.setTransform(2, 0, 0, 2, 0, 0); drawFace(ctx, e, e.hp, !e.alive); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (e.hairSprite) { e.hairSprite.visible = e.clipMode && drawHairBack(e); e.hairTex.needsUpdate = true; }
   // 頭になる丸い顔写真（ふちはチームの色）
   const S = FS * 2, h = e.headCanvas.getContext('2d'), R = S / 2 - 8;
   const rim = e.tagColor && e.tagColor !== '#ffffff' ? (e.team ? '#3d7bea' : '#e0503f') : '#f1e6c8';
@@ -1597,7 +1690,8 @@ function refreshFace(e, force) {
   e.faceTex.needsUpdate = true;
   const d = clamp(1 - e.hp / MAX_HP, 0, 1);
   e.swell = 1 + d * 0.12; // ボコボコにはれる
-  e.swellV = [1 + d * 0.16, 1 + d * 0.07, 1 + d * 0.12];
+  e.swellV = e.clipMode ? [1, 1, 1] : [1 + d * 0.16, 1 + d * 0.07, 1 + d * 0.12];
+  if (e.clipMode) e.swell = 1;
   e.bumps.forEach((b, i) => { const th = [0.3, 0.5, 0.7, 0.85][i]; b.visible = d >= th; b.scale.setScalar(1 + (d - th) * 2); });
   for (const c of e.thumbs) { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(e.faceCanvas, 0, 0, c.width, c.height); }
   drawBadge(e);
@@ -1625,7 +1719,7 @@ function makeEnt(info, mode = 'ffa') {
     hp: MAX_HP, alive: false, kills: 0, deaths: 0, respawnAt: 0, swell: 1, thumbs: [], faceKey: '', fall: 0, walk: 0,
     helmLv: 0, helmDur: 0, ar: 0, voice: VOICES[info.voice] ? info.voice : 'm1',
     y: 0, ry: 0, ty: 0, vy: 0, bigS: 1, cloakT: 0, mushT: 0, wingT: 0, fxBits: 0, invShown: false, swellV: [1, 1, 1],
-    team: mode === 'ffa' ? info.slot : num(info.team, 0), boss: false, mw: 'knife', sawT: 0, swingT: 0,
+    team: mode === 'ffa' ? info.slot : num(info.team, 0), boss: false, mw: baseWeapon(), sawT: 0, swingT: 0,
     // CPU 用
     path: [], repath: 0, target: null, seenAt: 0, nextFire: 0, ammo: MAG, strafe: 1, strafeT: 0, huntId: null,
   };
@@ -1669,7 +1763,7 @@ function startGame(cfg) {
   // 味方の名前は壁ごしにも見える／敵は見えない
   for (const e of game.ents) { e.tag.material.depthTest = e.badge.material.depthTest = !(game.me && e !== game.me && isAlly(e, game.me)); drawBadge(e); }
   $('teamScore').hidden = game.mode === 'ffa';
-  $('reloadBtn').hidden = game.rule === 'melee';
+  $('reloadBtn').hidden = meleeRule();
   $('hudModBtn').hidden = net.mode !== 'host';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
   tryLockLandscape(); tryFullscreen();
@@ -1823,7 +1917,7 @@ function hostFire(shooter, a, b, tgId, head, w) {
 }
 // 宝箱の中身（オプションでチェックしたものだけ）
 function rollLoot() {
-  const W = { ar: game.rule === 'melee' ? [['sword', 24], ['saw', 9]] : [['ar', 30]], helm: [['h1', 13], ['h2', 10], ['h3', 7]], med: [['med', 10]], cloak: [['cloak', 11]], mush: [['mush', 12]], wing: [['wing', 11]] };
+  const W = { ar: game.rule === 'clip' ? [] : game.rule === 'melee' ? [['sword', 24], ['saw', 9]] : [['ar', 30]], helm: [['h1', 13], ['h2', 10], ['h3', 7]], med: [['med', 10]], cloak: [['cloak', 11]], mush: [['mush', 12]], wing: [['wing', 11]] };
   const list = game.loot.flatMap((k) => W[k] || []), total = list.reduce((a, [, w]) => a + w, 0);
   if (!total) return null;
   let r = Math.random() * total;
@@ -1917,7 +2011,7 @@ function botThink(b, dt) {
     // 左右にちょこちょこ動く
     b.strafeT -= dt; if (b.strafeT <= 0) { b.strafeT = 0.6 + Math.random() * 1.2; b.strafe = Math.random() < 0.5 ? -1 : 1; }
     const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw), rx = -fz, rz = fx;
-    if (game.rule === 'melee') { // 接近戦：まっすぐ近づいて切りつける
+    if (meleeRule()) { // 接近戦：まっすぐ近づいて切りつける
       const M = MELEE[b.mw] || MELEE.knife;
       const close = bd < M.range * 0.8;
       mx = fx * (close ? 0.1 : 1) + rx * b.strafe * (close ? 0.5 : 0.25); mz = fz * (close ? 0.1 : 1) + rz * b.strafe * (close ? 0.5 : 0.25);
@@ -1972,7 +2066,7 @@ function botThink(b, dt) {
   }
   const L = Math.hypot(mx, mz);
   if (L > 0.01) {
-    const sp = P.speed * (game.rule === 'melee' ? 1.12 : 1) * dt / Math.max(1, L), ox = b.x, oz = b.z;
+    const sp = P.speed * (meleeRule() ? 1.12 : 1) * dt / Math.max(1, L), ox = b.x, oz = b.z;
     b.x += mx * sp; b.z += mz * sp; collide(b);
     if (Math.hypot(b.x - ox, b.z - oz) < sp * 0.2) { b.strafe *= -1; b.repath = 0; }
   }
@@ -1987,12 +2081,12 @@ function handleEvent(ev) {
   const me = game.me;
   if (ev.t === 'swing') {
     const e = game.byId.get(ev.id); if (!e || e === me) return;
-    e.swingT = 1; meleeSound(MELEE[ev.w] ? ev.w : 'knife', !!ev.hit, volAt(e.rx, e.rz));
+    e.swingT = 1; meleeSound(MELEE[ev.w] ? ev.w : baseWeapon(), !!ev.hit, volAt(e.rx, e.rz));
     return;
   }
   if (ev.t === 'wpn') {
     const e = game.byId.get(ev.id); if (!e) return;
-    e.mw = MELEE[ev.mw] ? ev.mw : 'knife'; e.sawT = 0;
+    e.mw = MELEE[ev.mw] ? ev.mw : baseWeapon(); e.sawT = 0;
     if (e === me) feed('🪚 チェーンソーの燃料が切れた！ナイフにもどった');
     return;
   }
@@ -2009,6 +2103,7 @@ function handleEvent(ev) {
     v.helmLv = clamp(num(ev.hl, v.helmLv), 0, 3); v.helmDur = num(ev.hd, v.helmDur); setHelmetMesh(v);
     if (ev.bl) playBuf(sounds.clack, 0.5 * volAt(v.rx, v.rz), { rate: 1.7 }); // カンッ（ヘルメットに当たった）
     if (ev.br) { feed(`⛑ ${v.name} のヘルメットがこわれた！`); }
+    if (game.rule === 'clip') spawnHair(v);
     if (v.hp > 0) playVoice(v, false);
     if (v === me) {
       game.hurt = 1; sfx('hurt', 0.9);
@@ -2021,12 +2116,12 @@ function handleEvent(ev) {
   } else if (ev.t === 'kill') {
     const k = game.byId.get(ev.k), v = game.byId.get(ev.v); if (!v) return;
     v.alive = false; v.hp = 0; v.fall = 0; v.deadT = game.time; v.helmLv = 0; v.helmDur = 0; v.ar = 0; setHelmetMesh(v);
-    v.cloakT = v.mushT = v.wingT = 0; v.fxBits = 0; v.mw = 'knife'; v.sawT = 0;
+    v.cloakT = v.mushT = v.wingT = 0; v.fxBits = 0; v.mw = baseWeapon(); v.sawT = 0;
     playVoice(v, true);
     if (net.isHost) { /* kills/deaths は hostDamage で数えた */ } else { v.deaths++; if (k && k !== v) k.kills++; }
     sfx('die', 0.7 * volAt(v.rx, v.rz));
-    const how = ev.g ? '✨ゴールデン' : ev.h ? '🎯ヘッドショット' : '🔫';
-    if (k && k !== v) feed([k, ` ${k.name} ${how} `, v, ` ${v.name}`]); else feed([v, ` ${v.name} はたおれた`]);
+    const how = game.rule === 'clip' ? (ev.g ? '✨💈ゴールデンバリカン' : '💈') : ev.g ? '✨ゴールデン' : ev.h ? '🎯ヘッドショット' : '🔫';
+    if (k && k !== v) feed([k, ` ${k.name} ${how} `, v, ` ${v.name}${game.rule === 'clip' ? ' がボーズに！' : ''}`]); else feed([v, ` ${v.name} はたおれた`]);
     if (v === me) { game.deathCam = 0; game.deadAt = game.time; game.killer = k && k !== v ? k.name : null; game.killerEnt = k && k !== v ? k : null; }
     if (me && k === me && v !== me) sfx('kill', 0.8);
     refreshFace(v);
@@ -2036,7 +2131,7 @@ function handleEvent(ev) {
     e.life = num(ev.n, (e.life || 0) + 1);
     e.hp = MAX_HP; e.alive = true; e.fall = 0; e.path = []; e.target = null; e.huntId = null; e.ammo = MAG; e.reloadAt = 0;
     e.helmLv = 0; e.helmDur = 0; e.ar = 0; setHelmetMesh(e);
-    e.y = e.ry = e.ty = 0; e.vy = 0; e.cloakT = e.mushT = e.wingT = 0; e.fxBits = 0; e.mw = 'knife'; e.sawT = 0;
+    e.y = e.ry = e.ty = 0; e.vy = 0; e.cloakT = e.mushT = e.wingT = 0; e.fxBits = 0; e.mw = baseWeapon(); e.sawT = 0;
     if (e === me) { game.ammo = MAG; game.reloadT = 0; }
     refreshFace(e);
   } else if (ev.t === 'gold') {
@@ -2047,7 +2142,7 @@ function handleEvent(ev) {
   } else if (ev.t === 'heal') {
     const e = game.byId.get(ev.id); if (!e) return;
     e.hp = num(ev.hp, e.hp); if (game.packs[ev.p]) { game.packs[ev.p].avail = false; game.packs[ev.p].at = game.time + 20; }
-    if (e === me) { sfx('pickup', 0.8); feed('💊 体力が回復した！'); }
+    if (e === me) { sfx('pickup', 0.8); feed(game.rule === 'clip' ? '🦱 カツラで髪がのびた！' : '💊 体力が回復した！'); }
     refreshFace(e);
   } else if (ev.t === 'chest') {
     const c = game.chests[ev.i]; if (!c) return;
@@ -2078,7 +2173,7 @@ function handleEvent(ev) {
   }
 }
 function itemName(k) {
-  return ({ ar: 'アサルトライフル（40発）', sword: '🗡 剣', saw: '✨🪚 金のチェーンソー（15秒）', med: '救急箱', cloak: '透明マント', mush: 'キノコ', wing: '羽根' })[k] || `ヘルメット ${(HELM[Number(String(k)[1])] || HELM[1]).name}`;
+  return ({ ar: 'アサルトライフル（40発）', sword: '🗡 剣', saw: '✨🪚 金のチェーンソー（15秒）', med: game && game.rule === 'clip' ? '🦱 カツラ' : '救急箱', cloak: '透明マント', mush: 'キノコ', wing: '羽根' })[k] || `ヘルメット ${(HELM[Number(String(k)[1])] || HELM[1]).name}`;
 }
 function applySnap(s) {
   if (!game || !Array.isArray(s.e)) return;
@@ -2108,7 +2203,7 @@ function applySnap(s) {
 function tryFire() {
   const me = game.me;
   if (!me || !me.alive || game.over) return;
-  if (game.rule === 'melee') { tryMelee(); return; }
+  if (meleeRule()) { tryMelee(); return; }
   const gold = game.gold === me.id, useAR = !gold && me.ar > 0;
   if (game.time < game.nextFire) return;
   if (!useAR) {
@@ -2168,7 +2263,7 @@ function meleeTarget(att, M, useRender) {
   return best;
 }
 function tryMelee() {
-  const me = game.me, w = MELEE[me.mw] ? me.mw : 'knife', M = MELEE[w];
+  const me = game.me, w = MELEE[me.mw] ? me.mw : baseWeapon(), M = MELEE[w];
   if (game.time < game.nextFire) return;
   game.nextFire = game.time + M.cd; game.swing = 1; me.swingT = 1;
   const hit = meleeTarget(me, M, true);
@@ -2177,13 +2272,14 @@ function tryMelee() {
   else sendHost({ t: 'melee', tg: hit ? hit.e.id : null, h: hit && hit.head ? 1 : 0 });
 }
 function meleeSound(w, hit, vol) {
+  if (w === 'clip') { playBuf(sounds.saw, 0.3 * vol, { rev: 0.03, rate: 1.9 + Math.random() * 0.1 }); if (hit) playBuf(sounds.clack, 0.5 * vol, { rate: 2.6, delay: 0.03 }); return; }
   if (w === 'saw') playBuf(sounds.saw, 0.55 * vol, { rev: 0.05, rate: 0.95 + Math.random() * 0.1 });
   else { playBuf(sounds.swish, 0.55 * vol, { rev: 0.1, rate: w === 'sword' ? 0.75 : 1.2 }); if (w === 'sword') playBuf(sounds.ring, 0.3 * vol, { rev: 0.3 }); }
   if (hit) playBuf(sounds.slash, 0.8 * vol, { rev: 0.15, delay: 0.04, rate: 0.9 + Math.random() * 0.2 });
 }
 function hostMelee(att, tgId, head) {
   if (!game || game.over || !att.alive) return;
-  const w = MELEE[att.mw] ? att.mw : 'knife', M = MELEE[w];
+  const w = MELEE[att.mw] ? att.mw : baseWeapon(), M = MELEE[w];
   if (att !== game.me && game.time < (att.meleeNext || 0)) return; // 連打しすぎは無視
   att.meleeNext = game.time + M.cd * 0.75;
   const tg = tgId ? game.byId.get(tgId) : null;
@@ -2193,7 +2289,7 @@ function hostMelee(att, tgId, head) {
   if (ok) hostDamage(tg, att, !!head, w);
 }
 function startReload() {
-  if (!game || game.rule === 'melee' || game.reloadT > 0 || (game.me && game.me.ar > 0 && game.gold !== game.me.id)) return;
+  if (!game || meleeRule() || game.reloadT > 0 || (game.me && game.me.ar > 0 && game.gold !== game.me.id)) return;
   const gold = game.me && game.gold === game.me.id;
   if (!gold && game.ammo >= MAG) return;
   game.reloadT = gold ? GOLD_RELOAD : RELOAD; sfx('reload', 0.7);
@@ -2370,7 +2466,10 @@ function frame(now) {
   }
   goldBall.rotation.y += dt * 2; goldBall.position.y = 1.25 + Math.sin(now / 400) * 0.08;
   goldBall.visible = !game || !game.gold; goldLight.intensity = goldBall.visible ? 1.2 : 0;
-  packMeshes.forEach((m, i) => { m.rotation.y += dt * 1.5; m.visible = !game || game.packs[i].avail; });
+  const clipMode = !!game && game.rule === 'clip';
+  packMeshes.forEach((m, i) => { m.rotation.y += dt * 1.5; m.visible = (!game || game.packs[i].avail) && !clipMode; });
+  wigMeshes.forEach((m, i) => { m.rotation.y += dt * 1.5; m.visible = clipMode && game.packs[i].avail; });
+  updateHairBits(dt);
   syncWorldItems(dt, now);
   renderer.render(scene, camera);
 }
@@ -2391,7 +2490,7 @@ function step(dt) {
     if (k.ArrowLeft) me.yaw += 2.4 * dt; if (k.ArrowRight) me.yaw -= 2.4 * dt;
     const L = Math.hypot(f, s); if (L > 1) { f /= L; s /= L; }
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = -fz, rz = fx;
-    const spd = SPEED * (game.rule === 'melee' ? 1.12 : 1); // 接近戦は少し速く走れる
+    const spd = SPEED * (meleeRule() ? 1.12 : 1); // 接近戦は少し速く走れる
     me.x += (fx * f + rx * s) * spd * dt; me.z += (fz * f + rz * s) * spd * dt;
     collide(me);
     me.rx = me.x; me.rz = me.z; me.walk += Math.hypot(f, s) * dt * 9;
@@ -2472,12 +2571,13 @@ function step(dt) {
     }
     e.badge.visible = e.alive && !inv;
     if (e.halo.visible) e.halo.position.y = top + 0.4 + Math.sin(game.time * 4) * 0.06;
-    const melee = game.rule === 'melee';
+    const melee = meleeRule();
     const rifle = !melee && e.ar > 0 && game.gold !== e.id;
     e.rifle3.visible = rifle; e.gun3.visible = !rifle && !melee;
     e.swingT = Math.max(0, (e.swingT || 0) - dt * (e.mw === 'saw' ? 3 : 4));
     for (const k of Object.keys(MELEE)) {
       const m = e.melee3[k]; m.visible = melee && e.mw === k;
+      if (k === 'clip' && m.userData.body) m.userData.body.color.set(game.gold === e.id ? '#ffcc33' : '#f2f2f2');
       if (m.visible) { const sw = Math.sin(e.swingT * Math.PI); m.rotation.set(-sw * 1.2, Math.PI + sw * 0.8, 0); if (k === 'saw' && e.swingT > 0) m.position.y = 0.8 + (Math.random() - 0.5) * 0.02; }
     }
     e.gun3.material.color.set(game.gold === e.id ? '#ffcc33' : '#222428');
@@ -2487,10 +2587,11 @@ function step(dt) {
     if (me.alive) {
       const bob = me.y > 0.01 ? 0 : Math.sin(me.walk) * 0.012;
       camera.position.set(me.x, me.y + EYE + bob, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
-      const melee = game.rule === 'melee';
+      const melee = meleeRule();
       const rifle = !melee && me.ar > 0 && game.gold !== me.id;
       viewGun.visible = !rifle && !melee; viewRifle.visible = rifle;
       for (const k of Object.keys(MELEE)) viewMelee[k].visible = melee && me.mw === k;
+      if (viewMelee.clip.userData.body) viewMelee.clip.userData.body.color.set(game.gold === me.id ? '#ffcc33' : '#f2f2f2');
     } else {
       game.deathCam = Math.min(1, game.deathCam + dt * 1.5);
       camera.position.set(me.rx, (me.y || 0) + EYE - game.deathCam * 1.0, me.rz); camera.rotation.set(me.pitch - game.deathCam * 0.6, me.yaw, game.deathCam * 0.7);
@@ -2521,12 +2622,12 @@ function step(dt) {
   $('cross').className = game.hitMark > 0 ? 'hit' : game.lock && me && me.alive ? 'lock' : iGold ? 'gold' : '';
   $('fireBtn').classList.toggle('gold', !!iGold);
   if (me) {
-    $('hpfill').style.width = me.hp + '%'; $('hptext').textContent = `体力 ${me.hp}  ☠ ${me.deaths}`;
-    const rifle = !iGold && me.ar > 0 && game.rule !== 'melee';
-    if (game.rule === 'melee') {
+    $('hpfill').style.width = me.hp + '%'; $('hptext').textContent = `${game.rule === 'clip' ? '髪' : '体力'} ${me.hp}  ☠ ${me.deaths}`;
+    const rifle = !iGold && me.ar > 0 && !meleeRule();
+    if (meleeRule()) {
       const M = MELEE[me.mw] || MELEE.knife;
       $('ammoNum').textContent = M.icon;
-      $('ammoSub').textContent = (iGold ? '✨ 一撃でたおせる！ ' : '') + M.name + (me.mw === 'saw' ? `（燃料 ${Math.max(0, Math.ceil(me.sawT))}秒）` : '');
+      $('ammoSub').textContent = (iGold ? (game.rule === 'clip' ? '✨ ゴールデンバリカン！一発でボーズ ' : '✨ 一撃でたおせる！ ') : '') + M.name + (me.mw === 'saw' ? `（燃料 ${Math.max(0, Math.ceil(me.sawT))}秒）` : '');
       $('fireBtn').textContent = M.icon;
     } else {
       $('ammoNum').textContent = rifle ? me.ar : game.reloadT > 0 ? '…' : game.ammo;
@@ -2543,8 +2644,8 @@ function step(dt) {
     jb.classList.toggle('wing', wing); jb.textContent = wing ? '上昇' : 'ジャンプ';
     let c = '';
     const dead = !me.alive && !game.over;
-    if (dead) c = `やられた…${game.killer ? `\n${game.killer} にやられた` : ''}\n${Math.max(1, Math.ceil(RESPAWN - (game.time - (game.deadAt || 0))))}`;
-    else if (game.time < 2.5) c = game.mode === 'ffa' ? (game.rule === 'melee' ? 'ミッション開始！\n🔪 接近戦のみ！宝箱で武器を強くしろ' : 'ミッション開始！\nゴールデンボールを手に入れろ')
+    if (dead) c = `${game.rule === 'clip' ? 'ボーズにされた…👨‍🦲' : 'やられた…'}${game.killer ? `\n${game.killer} にやられた` : ''}\n${Math.max(1, Math.ceil(RESPAWN - (game.time - (game.deadAt || 0))))}`;
+    else if (game.time < 2.5) c = game.rule === 'clip' ? 'ミッション開始！\n💈 バリカンで相手をボーズにしろ！' : game.mode === 'ffa' ? (game.rule === 'melee' ? 'ミッション開始！\n🔪 接近戦のみ！宝箱で武器を強くしろ' : 'ミッション開始！\nゴールデンボールを手に入れろ')
       : `ミッション開始！\nあなたは ${me.boss ? '👑 ボス' : TEAM_NAMES[me.team ? 1 : 0]}`;
     $('centerText').textContent = c;
     const ke = dead && game.killerEnt;
@@ -2561,7 +2662,8 @@ function step(dt) {
     drawDmgDirs(dt, me);
   }
   const gh = game.gold && game.byId.get(game.gold);
-  $('goldmsg').textContent = gh ? `✨ ゴールデンボール：${gh.name}` : '✨ ゴールデンボールはまん中の台';
+  const gname = game.rule === 'clip' ? 'ゴールデンバリカン' : 'ゴールデンボール';
+  $('goldmsg').textContent = gh ? `✨ ${gname}：${gh.name}` : `✨ ${gname}はまん中の台`;
   renderBoard();
 }
 requestAnimationFrame(frame);
@@ -2682,7 +2784,7 @@ function onHostData(conn, d) {
     const a = vec(d.a), b = vec(d.b); if (!a || !b) return;
     hostFire(e, a, b, typeof d.tg === 'string' ? d.tg : null, !!d.h, d.w === 'ar' ? 'ar' : 'p');
     if (d.w === 'ar' && e.ar > 0) e.ar--;
-  } else if (d.t === 'melee' && game.rule === 'melee') {
+  } else if (d.t === 'melee' && meleeRule()) {
     hostMelee(e, typeof d.tg === 'string' ? d.tg : null, !!d.h);
   }
 }
