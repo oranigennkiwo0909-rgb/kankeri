@@ -340,6 +340,9 @@
     <div class="seg2"><button id="assistOn">オン</button><button id="assistOff">オフ</button></div>
     <span class="field">やられた時の声（えらぶと試しに鳴ります）</span>
     <div class="vgrid" id="voiceGrid"></div>
+    <span class="field">ブラウザの枠をなくす</span>
+    <a class="fsbtn" id="setOpenSafari" href="#" style="margin-top:0;text-align:center">🧭 Safari／ブラウザで開く</a>
+    <div class="mini" style="margin-top:4px">LINE などのアプリの中だと上下に枠が出ます。ブラウザで開くと小さくなり、そこで「ホーム画面に追加」すると全画面で遊べます（試合中に押すと、その試合からは抜けます）</div>
     <span class="field">画面の向き（スマホ）</span>
     <div class="seg2" id="orientSeg"><button data-o="auto">自動（スマホの向きのまま）</button><button data-o="land">横画面に固定</button></div>
     <div class="mini" style="margin-top:4px">縦向きロック中や LINE の中で横にならない時は「横画面に固定」にしてね</div>
@@ -853,6 +856,7 @@ function renderSettings() {
   $('assistOn').className = settings.assist ? 'on' : ''; $('assistOff').className = settings.assist ? '' : 'on';
   $('bgmRange').value = settings.bgm; $('bgmVal').textContent = settings.bgm ? settings.bgm : 'オフ';
   for (const b of $('orientSeg').children) b.className = b.dataset.o === settings.orient ? 'on' : '';
+  $('setOpenSafari').href = externalUrl();
   const vg = $('voiceGrid'); vg.innerHTML = '';
   for (const [k, v] of Object.entries(VOICES)) {
     const b = document.createElement('button'); b.textContent = v.label; b.className = settings.voice === k ? 'on' : '';
