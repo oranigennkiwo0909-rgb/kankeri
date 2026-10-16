@@ -188,7 +188,8 @@
   .members li.t0 { border-left: 5px solid #c0392b; } .members li.t1 { border-left: 5px solid #2e6bd1; }
   .sc.t0 { border-left: 4px solid #e0503f; } .sc.t1 { border-left: 4px solid #4a86ea; }
   #teamScore { font-size: 16px; font-weight: 900; text-shadow: 0 1px 3px #000; text-align: right; }
-  .modact { display: flex; gap: 4px; flex: none; }
+  .modact { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 62%; }
+  #modList li { flex-wrap: wrap; }
   .modact button { padding: 6px 8px; font-size: 12px; }
   .modact .danger { background: #6e231a; border-color: #ff8a7a; }
   #lobbyCode { cursor: pointer; }
@@ -330,9 +331,9 @@
     <h2>🛡 メンバー管理</h2>
     <div class="seg2"><button id="lockBtn">🔒 新しい人を入れない</button><button id="hideCodeBtn">🙈 合言葉をかくす</button></div>
     <ul class="members" id="modList"></ul>
-    <span class="field">⛔ ブロック中の人（このスマホに保存）</span>
+    <span class="field">⛔ ブロック中の人</span>
     <ul class="members" id="blockList"></ul>
-    <p class="mini">キック：部屋から外します（また入れます）。ブロック：外して、同じスマホからは入れなくします。顔をかくす：その人の写真を全員の画面で似顔絵にします。</p>
+    <p class="mini">👢キック：外すだけ（また入れます）／⛔この部屋でブロック：この部屋には入れない（部屋をつくり直すと自動で解除）／🚫ずっと：解除するまで、このスマホで作る部屋に入れない／🙈顔：その人の写真を全員の画面で似顔絵に</p>
     <button class="primary" id="modClose">とじる</button>
   </div>
 </div>
@@ -2491,7 +2492,7 @@ function p2pOptions() {
   if (q.get('peerhost')) Object.assign(o, { host: q.get('peerhost'), port: Number(q.get('peerport') || 9000), path: '/', secure: false });
   return o;
 }
-const net = { mode: 'solo', isHost: true, myId: 'me', peer: null, conns: new Map(), hostConn: null, code: '', members: [], joinTimer: null, seen: new Map(), hostSeen: 0 };
+const net = { roomBlocks: new Map(), mode: 'solo', isHost: true, myId: 'me', peer: null, conns: new Map(), hostConn: null, code: '', members: [], joinTimer: null, seen: new Map(), hostSeen: 0 };
 // 生きてるよ合図：タブを閉じた人に早く気づくため
 setInterval(() => {
   const now = Date.now();
@@ -2514,6 +2515,7 @@ function leaveAll() {
 }
 function hostRoom(retry = 0) {
   net.bye = false;
+  if (!retry) net.roomBlocks = new Map(); // 部屋をつくり直すと「この部屋だけ」のブロックはリセット
   if (!window.Peer) { $('onlineStatus').textContent = '通信の部品が読みこめませんでした。電波のよい所でページを開きなおしてね'; return; }
   leaveAll();
   net.mode = 'host'; net.isHost = true;
@@ -2539,7 +2541,7 @@ function onHostData(conn, d) {
   net.seen.set(conn.peer, Date.now());
   if (d.t === 'hello') {
     const uid = String(d.uid || '').slice(0, 40);
-    if (uid && blockedList().some((b) => b.uid === uid)) { try { conn.send({ t: 'blocked' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
+    if (uid && (net.roomBlocks.has(uid) || blockedList().some((b) => b.uid === uid))) { try { conn.send({ t: 'blocked' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
     if (net.locked && !net.members.some((m) => m.id === conn.peer)) { try { conn.send({ t: 'locked' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
     if (net.members.length >= 4) { try { conn.send({ t: 'full' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
     const face = typeof d.face === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(d.face) && d.face.length < 150000 ? d.face : null;
@@ -2602,17 +2604,18 @@ function joinRoom(code) {
 // ---- メンバー管理（ホストだけ） ----
 function blockedList() { try { const l = JSON.parse(store.get('gb_blocked') || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
 function saveBlocked(l) { store.set('gb_blocked', JSON.stringify(l.slice(-50))); }
-function kickMember(id, block) {
+function kickMember(id, block) { // block: 0=キックだけ / 1=この部屋だけ / 2=ずっと
   const m = net.members.find((x) => x.id === id); if (!m || !net.isHost || id === net.myId) return;
   const conn = net.conns.get(id);
   try { conn && conn.send({ t: 'kicked' }); } catch (e) {}
-  if (block && m.uid) { saveBlocked([...blockedList().filter((b) => b.uid !== m.uid), { uid: m.uid, name: m.name, at: Date.now() }]); }
+  if (block === 1 && m.uid) net.roomBlocks.set(m.uid, m.name);
+  if (block === 2 && m.uid) saveBlocked([...blockedList().filter((b) => b.uid !== m.uid), { uid: m.uid, name: m.name, at: Date.now() }]);
   setTimeout(() => { try { conn && conn.close(); } catch (e) {} }, 300);
   net.conns.delete(id);
   net.members = net.members.filter((x) => x.id !== id);
   if (game) { const e = game.byId.get(id); if (e && !e.isBot) emit({ t: 'botify', id }); }
   broadcast(lobbyMsg()); renderLobby(); renderMod();
-  feedOrStatus(`${block ? '⛔' : '👢'} ${m.name} を${block ? 'ブロック' : 'キック'}しました`);
+  feedOrStatus(`${block ? '⛔' : '👢'} ${m.name} を${block === 2 ? 'ずっとブロック' : block ? 'この部屋でブロック' : 'キック'}しました`);
 }
 function hideFaceOf(e) { e.face = null; e.faceImg = null; sampleColors(e); refreshFace(e, true); }
 function hideMemberFace(id) {
@@ -2636,19 +2639,23 @@ function renderMod() {
     const act = document.createElement('span'); act.className = 'modact';
     const mk = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = fn; act.appendChild(b); };
     if (!m.faceHidden) mk('🙈 顔', '', () => hideMemberFace(m.id));
-    mk('👢 キック', 'danger', () => { if (confirm(`${m.name} を部屋から外しますか？`)) kickMember(m.id, false); });
-    mk('⛔ ブロック', 'danger', () => { if (confirm(`${m.name} をブロックしますか？\n（このスマホで作った部屋には、もう入れなくなります）`)) kickMember(m.id, true); });
+    mk('👢 キック', 'danger', () => { if (confirm(`${m.name} を部屋から外しますか？（また入れます）`)) kickMember(m.id, 0); });
+    mk('⛔ この部屋でブロック', 'danger', () => { if (confirm(`${m.name} をこの部屋からブロックしますか？\n（部屋をつくり直すと自動で解除されます）`)) kickMember(m.id, 1); });
+    mk('🚫 ずっと', 'danger', () => { if (confirm(`${m.name} をずっとブロックしますか？\n（このスマホで作る部屋には、解除するまで入れません）`)) kickMember(m.id, 2); });
     li.append(nm, act); ul.appendChild(li);
   }
   const bl = $('blockList'); bl.innerHTML = '';
-  const list = blockedList();
-  if (!list.length) { const li = document.createElement('li'); li.textContent = 'なし'; bl.appendChild(li); }
-  for (const b of list) {
+  const rows = [...[...net.roomBlocks].map(([uid, name]) => ({ uid, name, room: true })), ...blockedList()];
+  if (!rows.length) { const li = document.createElement('li'); li.textContent = 'なし'; bl.appendChild(li); }
+  for (const b of rows) {
     const li = document.createElement('li');
-    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = b.name || '（なまえなし）';
-    const un = document.createElement('button'); un.textContent = '解除'; un.onclick = () => { saveBlocked(blockedList().filter((x) => x.uid !== b.uid)); renderMod(); };
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = (b.name || '（なまえなし）') + (b.room ? '（この部屋だけ）' : '（ずっと）');
+    const un = document.createElement('button'); un.textContent = '解除';
+    un.onclick = () => { if (b.room) net.roomBlocks.delete(b.uid); else saveBlocked(blockedList().filter((x) => x.uid !== b.uid)); renderMod(); };
     li.append(nm, un); bl.appendChild(li);
   }
+  if (rows.length > 1) { const li = document.createElement('li'); const all = document.createElement('button'); all.textContent = '🔓 ブロックを全部解除'; all.style.width = '100%';
+    all.onclick = () => { if (confirm('ブロックを全部解除しますか？')) { net.roomBlocks.clear(); saveBlocked([]); renderMod(); } }; li.appendChild(all); bl.appendChild(li); }
 }
 function openMod() { if (document.pointerLockElement) document.exitPointerLock(); $('modPanel').hidden = false; renderMod(); updateLockHint(); }
 $('modBtn').onclick = openMod; $('hudModBtn').onclick = openMod;
