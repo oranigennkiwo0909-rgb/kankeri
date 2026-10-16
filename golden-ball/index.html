@@ -1428,7 +1428,12 @@ function buildChar(e) {
   e.wings = makeWings(); e.wings.position.set(0, 0.74, -0.2); e.wings.visible = false; body.add(e.wings);
   e.wings.children.forEach((w) => { w.rotation.y = Math.PI; });
   e.tag = nameSprite((e.boss ? '👑 ' : '') + e.name, e.tagColor); e.tag.position.y = 2.05; root.add(e.tag);
-  e.halo = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), goldMat); e.halo.position.y = 2.3; e.halo.visible = false; root.add(e.halo);
+  // 名前の上に顔写真のバッジ（ダメージでボロボロになっていくのが見える）＋体力バー
+  e.badgeCanvas = document.createElement('canvas'); e.badgeCanvas.width = 128; e.badgeCanvas.height = 156;
+  e.badgeTex = new THREE.CanvasTexture(e.badgeCanvas);
+  e.badge = new THREE.Sprite(new THREE.SpriteMaterial({ map: e.badgeTex, depthTest: true, transparent: true }));
+  e.badge.scale.set(0.62, 0.755, 1); e.badge.position.y = 2.55; root.add(e.badge);
+  e.halo = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), goldMat); e.halo.position.y = 3.05; e.halo.visible = false; root.add(e.halo);
   e.root = root; e.body = body;
   scene.add(root);
 }
@@ -1476,6 +1481,20 @@ function refreshFace(e, force) {
   e.swellV = [1 + d * 0.16, 1 + d * 0.07, 1 + d * 0.12];
   e.bumps.forEach((b, i) => { const th = [0.3, 0.5, 0.7, 0.85][i]; b.visible = d >= th; b.scale.setScalar(1 + (d - th) * 2); });
   for (const c of e.thumbs) { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(e.faceCanvas, 0, 0, c.width, c.height); }
+  drawBadge(e);
+}
+function drawBadge(e) {
+  if (!e.badgeCanvas) return;
+  const x = e.badgeCanvas.getContext('2d'), frame = e.tagColor && e.tagColor !== '#ffffff' ? (e.team ? '#3d7bea' : '#e0503f') : '#f5c542';
+  x.clearRect(0, 0, 128, 156);
+  const rr = (X, Y, W, H, R) => { x.beginPath(); x.moveTo(X + R, Y); x.arcTo(X + W, Y, X + W, Y + H, R); x.arcTo(X + W, Y + H, X, Y + H, R); x.arcTo(X, Y + H, X, Y, R); x.arcTo(X, Y, X + W, Y, R); x.closePath(); };
+  x.fillStyle = 'rgba(0,0,0,.55)'; rr(0, 0, 128, 156, 18); x.fill();
+  x.save(); rr(8, 8, 112, 112, 14); x.clip(); x.drawImage(e.faceCanvas, 8, 8, 112, 112); x.restore();
+  x.lineWidth = 6; x.strokeStyle = frame; rr(8, 8, 112, 112, 14); x.stroke();
+  const hp = clamp(e.hp / MAX_HP, 0, 1);
+  x.fillStyle = 'rgba(255,255,255,.2)'; rr(10, 132, 108, 14, 7); x.fill();
+  x.fillStyle = hp > 0.6 ? '#5fd35f' : hp > 0.3 ? '#f5c542' : '#e0402a'; if (hp > 0) { rr(10, 132, Math.max(14, 108 * hp), 14, 7); x.fill(); }
+  e.badgeTex.needsUpdate = true;
 }
 
 // ---------------------------------------------------------------------
@@ -1534,7 +1553,7 @@ function startGame(cfg) {
   $('hpname').textContent = game.me ? game.me.name : '';
   $('feed').innerHTML = '';
   // 味方の名前は壁ごしにも見える／敵は見えない
-  for (const e of game.ents) e.tag.material.depthTest = !(game.me && e !== game.me && isAlly(e, game.me));
+  for (const e of game.ents) { e.tag.material.depthTest = e.badge.material.depthTest = !(game.me && e !== game.me && isAlly(e, game.me)); drawBadge(e); }
   $('teamScore').hidden = game.mode === 'ffa';
   $('reloadBtn').hidden = game.rule === 'melee';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
@@ -1832,7 +1851,7 @@ function handleEvent(ev) {
     refreshFace(v);
   } else if (ev.t === 'kill') {
     const k = game.byId.get(ev.k), v = game.byId.get(ev.v); if (!v) return;
-    v.alive = false; v.hp = 0; v.fall = 0; v.helmLv = 0; v.helmDur = 0; v.ar = 0; setHelmetMesh(v);
+    v.alive = false; v.hp = 0; v.fall = 0; v.deadT = game.time; v.helmLv = 0; v.helmDur = 0; v.ar = 0; setHelmetMesh(v);
     v.cloakT = v.mushT = v.wingT = 0; v.fxBits = 0; v.mw = 'knife'; v.sawT = 0;
     playVoice(v, true);
     if (net.isHost) { /* kills/deaths は hostDamage で数えた */ } else { v.deaths++; if (k && k !== v) k.kills++; }
@@ -2267,14 +2286,18 @@ function step(dt) {
     const sv = e.swellV;
     e.head.scale.set(sv[0] * e.bigS, sv[1] * e.bigS, sv[2] * e.bigS); e.head.position.y = BODY_TOP + HEAD_R * e.bigS;
     const extra = (e.bigS - 1) * HEAD_R * 2;
-    e.tag.position.y = 2.05 + extra;
+    // 遠くの相手でも顔が見えるよう、離れるほどバッジを大きく（最大 3 倍）
+    const camD = Math.hypot(e.rx - camera.position.x, e.rz - camera.position.z), bk = clamp(camD / 6, 1, 3);
+    e.badge.scale.set(0.62 * bk, 0.755 * bk, 1);
+    e.tag.position.y = 2.05 + extra; e.badge.position.y = 2.45 + extra + 0.38 * bk;
     const winged = fxOn(e, 'wing') && e.alive;
     e.wings.visible = winged;
     if (winged) e.wings.children.forEach((w) => { w.rotation.y = Math.PI + w.userData.sx * (0.5 + Math.sin(game.time * 14) * 0.45); });
     const inv = fxOn(e, 'cloak') && e.alive;
     if (inv !== e.invShown) { e.invShown = inv; setOpacity(e.body, inv ? 0.07 : 1); }
     e.tag.visible = e.alive && !inv; e.halo.visible = game.gold === e.id && e.alive;
-    if (e.halo.visible) e.halo.position.y = 2.3 + extra + Math.sin(game.time * 4) * 0.06;
+    e.badge.visible = !inv && (e.alive || game.time - (e.deadT || 0) < 2.5); // やられた直後は ×_× の顔をしばらく見せる
+    if (e.halo.visible) e.halo.position.y = 2.55 + extra + 0.8 * bk + Math.sin(game.time * 4) * 0.06;
     const melee = game.rule === 'melee';
     const rifle = !melee && e.ar > 0 && game.gold !== e.id;
     e.rifle3.visible = rifle; e.gun3.visible = !rifle && !melee;
