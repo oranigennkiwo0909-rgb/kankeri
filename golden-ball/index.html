@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
 <title>naoの008ゴールデンボール</title>
 <meta name="theme-color" content="#0b0d0a">
 <meta property="og:title" content="naoの008ゴールデンボール">
@@ -23,7 +23,8 @@
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; overscroll-behavior: none;
+    -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
     font-family: var(--font); -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
@@ -113,7 +114,7 @@
     text-shadow: 0 2px 6px #000; white-space: pre-line; width: 90%; }
   #goldmsg { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); font-size: 13px; color: var(--gold); text-shadow: 0 1px 3px #000; white-space: nowrap; }
   #hudBtns { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 8px; }
-  #hudBtns button { pointer-events: auto; padding: 6px 14px; font-size: 13px; background: rgba(0,0,0,.45); white-space: nowrap; }
+  #hudBtns button { touch-action: manipulation; pointer-events: auto; padding: 6px 14px; font-size: 13px; background: rgba(0,0,0,.45); white-space: nowrap; }
   #dmgdir { position: absolute; inset: 0; width: 100%; height: 100%; }
   #cross.lock::before, #cross.lock::after { background: #ffb347; }
   #cross.lock { outline: 2px solid rgba(255,179,71,.8); outline-offset: 6px; border-radius: 50%; }
@@ -194,6 +195,7 @@
         <li>頭に当てると 2 倍ダメージ。</li>
         <li>撃たれると、撃ってきた方向が赤い矢印で出ます。</li>
         <li>「⚙ 設定」で視点の感度と、エイムお助け（照準を近くに合わせると吸いつく）のオン・オフを変えられます。</li>
+        <li>「⚙ 設定」で BGM の音量も変えられます（0 で消えます）。</li>
         <li>パソコン：WASD で移動、マウスで狙う、クリックで撃つ、R でリロード。</li>
         <li>スマホ：左側をなぞって移動、右側をなぞって狙う、🔫 ボタンで撃つ（ボタンをなぞっても狙えます）。</li>
         <li>友達が足りない分は CPU が入ります。途中で抜けた人も CPU に交代。</li>
@@ -260,6 +262,8 @@
     <div class="slider-row"><span style="width:auto">おそい</span><input type="range" id="sensRange" min="20" max="300" step="5"><span style="width:auto">はやい</span></div>
     <span class="field">エイムお助け<br><span class="mini">照準を相手の近くに合わせると、ちょっとだけ相手の方へ吸いつきます</span></span>
     <div class="seg2"><button id="assistOn">オン</button><button id="assistOff">オフ</button></div>
+    <span class="field">BGM の音量：<b id="bgmVal">35</b></span>
+    <div class="slider-row"><span style="width:auto">🔇</span><input type="range" id="bgmRange" min="0" max="100" step="5"><span style="width:auto">🔊</span></div>
     <button class="primary" id="settingsClose">とじる</button>
   </div>
 </div>
@@ -655,17 +659,24 @@ if (prof.face) setFaceImgFromData(prof.face); else drawPreview();
 const myName = () => cleanName($('nameInput').value) || 'ななしのスパイ';
 
 // 設定（端末ごとに保存）
-const settings = { sens: clamp(Number(store.get('gb_sens')) || 1, 0.2, 3), assist: store.get('gb_assist') !== '0' };
+const settings = { sens: clamp(Number(store.get('gb_sens')) || 1, 0.2, 3), assist: store.get('gb_assist') !== '0',
+  bgm: store.get('gb_bgm') == null ? 35 : clamp(Number(store.get('gb_bgm')) || 0, 0, 100) };
 function renderSettings() {
   $('sensRange').value = Math.round(settings.sens * 100); $('sensVal').textContent = settings.sens.toFixed(2).replace(/0$/, '');
   $('assistOn').className = settings.assist ? 'on' : ''; $('assistOff').className = settings.assist ? '' : 'on';
+  $('bgmRange').value = settings.bgm; $('bgmVal').textContent = settings.bgm ? settings.bgm : 'オフ';
 }
 function openSettings() { if (document.pointerLockElement) document.exitPointerLock(); renderSettings(); $('settings').hidden = false; updateLockHint(); }
 $('sensRange').oninput = (e) => { settings.sens = Number(e.target.value) / 100; store.set('gb_sens', String(settings.sens)); renderSettings(); };
+$('bgmRange').oninput = (e) => {
+  settings.bgm = Number(e.target.value); store.set('gb_bgm', String(settings.bgm)); renderSettings();
+  if (bgmBus) bgmBus.gain.value = bgmLevel();
+  if (settings.bgm <= 0) bgmStop(); else if (game) { audio(); bgmStart(); }
+};
 $('assistOn').onclick = () => { settings.assist = true; store.set('gb_assist', '1'); renderSettings(); };
 $('assistOff').onclick = () => { settings.assist = false; store.set('gb_assist', '0'); renderSettings(); };
 $('settingsClose').onclick = () => { $('settings').hidden = true; updateLockHint(); };
-$('titleSetBtn').onclick = openSettings;
+$('titleSetBtn').onclick = () => { audio(); openSettings(); };
 $('hudSetBtn').onclick = openSettings;
 
 let diff = DIFF[store.get('gb_diff')] ? store.get('gb_diff') : 'normal';
@@ -682,31 +693,143 @@ renderDiff('diffSeg');
 // ---------------------------------------------------------------------
 //  音（WebAudio で合成）
 // ---------------------------------------------------------------------
-let AC = null, noiseBuf = null;
+let AC = null, noiseBuf = null, master = null, sfxBus = null, revIn = null, bgmBus = null;
+const sounds = {};
+function makeBuf(sec, fn) { const sr = AC.sampleRate, b = AC.createBuffer(1, Math.floor(sr * sec), sr); fn(b.getChannelData(0), sr); return b; }
+function buildSounds() {
+  // 基地の中の響き（コンクリートの部屋っぽいエコー）
+  const len = AC.sampleRate * 1.4, ir = AC.createBuffer(2, len, AC.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let lp = 0; for (let i = 0; i < len; i++) { const t = i / AC.sampleRate; lp += (Math.random() * 2 - 1 - lp) * 0.35; d[i] = lp * Math.pow(1 - t / 1.4, 2.5) * Math.min(1, t / 0.012); } }
+  const conv = AC.createConvolver(); conv.buffer = ir; revIn = AC.createGain(); revIn.connect(conv);
+  const rg = AC.createGain(); rg.gain.value = 0.5; conv.connect(rg); rg.connect(master);
+  // 拳銃：パンッ（破裂）＋ドン（胴鳴り）＋低い衝撃＋ザーッ（尾）
+  const pistol = (gold) => makeBuf(0.9, (d, sr) => {
+    let lp1 = 0, lp2 = 0, ph = 0;
+    for (let i = 0; i < d.length; i++) {
+      const t = i / sr, w = Math.random() * 2 - 1;
+      lp1 += (w - lp1) * 0.18; lp2 += (w - lp2) * 0.04;
+      const crack = (w - lp1) * Math.exp(-t / 0.006) * 1.4;
+      const body = lp1 * Math.exp(-t / 0.045) * 2.2;
+      ph += 2 * Math.PI * (45 + 95 * Math.exp(-t / 0.03)) / sr;
+      const thump = Math.sin(ph) * Math.exp(-t / 0.09) * 0.9;
+      const tail = lp2 * Math.exp(-t / 0.3) * 1.6;
+      let v = crack + body + thump + tail;
+      if (gold) v += (Math.sin(2 * Math.PI * 2093 * t) * 0.25 + Math.sin(2 * Math.PI * 3136 * t) * 0.18) * Math.exp(-t / 0.35);
+      d[i] = Math.tanh(v * 1.6) * 0.9;
+    }
+  });
+  sounds.shot = pistol(false); sounds.gold = pistol(true);
+  // 金属のカチャッ（マガジン・スライド）
+  sounds.clack = makeBuf(0.12, (d, sr) => { let lp = 0; for (let i = 0; i < d.length; i++) { const t = i / sr, w = Math.random() * 2 - 1; lp += (w - lp) * 0.5;
+    d[i] = (w - lp) * 0.8 * Math.exp(-t / 0.008) + Math.sin(2 * Math.PI * 1800 * t) * 0.4 * Math.exp(-t / 0.02) + Math.sin(2 * Math.PI * 3100 * t) * 0.25 * Math.exp(-t / 0.015); } });
+  sounds.thunk = makeBuf(0.15, (d, sr) => { let lp = 0; for (let i = 0; i < d.length; i++) { const t = i / sr, w = Math.random() * 2 - 1; lp += (w - lp) * 0.08;
+    d[i] = lp * 3 * Math.exp(-t / 0.03) + Math.sin(2 * Math.PI * 220 * t) * 0.4 * Math.exp(-t / 0.04); } });
+  // 薬きょうが床で跳ねる音
+  sounds.shell = makeBuf(0.4, (d, sr) => { for (let i = 0; i < d.length; i++) { const t = i / sr; let v = 0;
+    for (const [t0, a] of [[0, 1], [0.09, 0.5], [0.16, 0.3]]) if (t >= t0) { const u = t - t0; v += (Math.sin(2 * Math.PI * 4200 * u) + Math.sin(2 * Math.PI * 6100 * u) * 0.6) * a * Math.exp(-u / 0.025); }
+    d[i] = v * 0.25; } });
+}
 function audio() {
-  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
-    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.5, AC.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
+  if (!AC) {
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.5, AC.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+    const comp = AC.createDynamicsCompressor(); comp.threshold.value = -10; comp.ratio.value = 4; comp.attack.value = 0.002; comp.release.value = 0.15; comp.connect(AC.destination);
+    master = AC.createGain(); master.gain.value = 0.9; master.connect(comp);
+    sfxBus = AC.createGain(); sfxBus.connect(master);
+    bgmBus = AC.createGain(); bgmBus.gain.value = bgmLevel(); bgmBus.connect(master);
+    buildSounds();
+  }
   if (AC.state === 'suspended') AC.resume();
   return AC;
 }
+function playBuf(buf, vol, { lp = 20000, rev = 0.15, delay = 0, rate = 1 } = {}) {
+  const ac = AC; if (!ac || !buf || vol < 0.01) return;
+  const s = ac.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate;
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ac.createGain(); g.gain.value = vol;
+  s.connect(f); f.connect(g); g.connect(sfxBus);
+  if (rev > 0) { const r = ac.createGain(); r.gain.value = rev * vol; f.connect(r); r.connect(revIn); }
+  s.start(ac.currentTime + delay);
+}
+// 銃声：遠いほど小さく、こもって、響きが多くなる
+function gunSound(gold, x, z, own) {
+  if (!AC) return;
+  const dist = own ? 0 : game && game.me ? Math.hypot(x - game.me.rx, z - game.me.rz) : 10;
+  const vol = own ? 0.85 : 0.75 / (1 + dist * 0.09);
+  playBuf(gold ? sounds.gold : sounds.shot, vol, { lp: own ? 16000 : clamp(14000 / (1 + dist * 0.12), 900, 14000), rev: own ? 0.35 : 0.5 + Math.min(1, dist / 30), rate: 0.94 + Math.random() * 0.12 });
+  if (own) playBuf(sounds.shell, 0.3, { delay: 0.35 + Math.random() * 0.1, rev: 0.1, rate: 0.9 + Math.random() * 0.2 });
+}
 function sfx(type, vol = 1) {
   const ac = AC; if (!ac || vol < 0.03) return;
-  const t = ac.currentTime, out = ac.createGain(); out.gain.value = vol; out.connect(ac.destination);
+  const t = ac.currentTime, out = ac.createGain(); out.gain.value = vol; out.connect(sfxBus);
   const env = (node, a, dur) => { const g = ac.createGain(); g.gain.setValueAtTime(a, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); node.connect(g); g.connect(out); return g; };
   const osc = (type2, f0, f1, dur, a) => { const o = ac.createOscillator(); o.type = type2; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); env(o, a, dur); o.start(t); o.stop(t + dur + 0.02); };
   const noise = (freq, q, dur, a) => { const s = ac.createBufferSource(); s.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; s.connect(f); env(f, a, dur); s.start(t); s.stop(t + dur + 0.02); };
-  if (type === 'shot') { noise(1400, 0.7, 0.16, 1.1); osc('triangle', 160, 40, 0.14, 0.9); }
-  else if (type === 'gold') { noise(2200, 0.8, 0.2, 1); osc('sine', 1320, 660, 0.4, 0.35); osc('triangle', 140, 40, 0.18, 0.9); }
-  else if (type === 'hit') { osc('square', 900, 600, 0.06, 0.25); }
+  if (type === 'hit') { osc('square', 900, 600, 0.06, 0.25); }
   else if (type === 'hurt') { noise(300, 1, 0.25, 0.9); osc('sawtooth', 180, 90, 0.2, 0.3); }
   else if (type === 'die') { osc('sawtooth', 420, 60, 0.7, 0.35); }
-  else if (type === 'reload') { noise(3000, 4, 0.04, 0.6); setTimeout(() => sfx('click', vol), 260); }
-  else if (type === 'click') { noise(3500, 5, 0.03, 0.7); }
+  else if (type === 'reload') { // マガジンを抜く → 入れる → スライドを引く
+    playBuf(sounds.clack, 0.5 * vol, { rate: 0.8 }); playBuf(sounds.thunk, 0.7 * vol, { delay: 0.5 }); playBuf(sounds.clack, 0.7 * vol, { delay: 0.9, rate: 1.1 });
+  }
+  else if (type === 'click') { playBuf(sounds.clack, 0.6 * vol, { rate: 1.3 }); }
   else if (type === 'pickup') { osc('sine', 660, 990, 0.12, 0.35); setTimeout(() => { if (AC) sfx('ding', vol); }, 110); }
   else if (type === 'ding') { osc('sine', 1320, 1320, 0.25, 0.3); }
   else if (type === 'kill') { osc('square', 520, 780, 0.15, 0.2); }
 }
 const volAt = (x, z) => game && game.me ? 1 / (1 + Math.hypot(x - game.me.rx, z - game.me.rz) * 0.12) : 1;
+
+// ---------------------------------------------------------------------
+//  BGM：スパイ映画っぽいオリジナル曲（ウォーキングベース＋ブラス＋サーフギター）
+// ---------------------------------------------------------------------
+const bgm = { playing: false, next: 0, step: 0, timer: null };
+const BPM = 132, STEP = 60 / BPM / 2;
+const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const BASS = [40, 0, 40, 43, 45, 0, 43, 40, 40, 0, 40, 43, 46, 45, 43, 40, 36, 0, 36, 40, 43, 0, 40, 36, 35, 0, 35, 39, 42, 0, 39, 35];
+const LEAD = [64, 0, 67, 0, 71, 0, 69, 67, 64, 0, 0, 0, 62, 64, 0, 0, 67, 0, 69, 0, 72, 0, 71, 69, 71, 0, 0, 0, 66, 0, 71, 0];
+function bgmLevel() { return (settings.bgm / 100) * 0.32; }
+function bgmStart() {
+  if (!AC || bgm.playing || settings.bgm <= 0) return;
+  bgm.playing = true; bgm.next = AC.currentTime + 0.15; bgm.step = 0;
+  bgm.timer = setInterval(bgmTick, 40);
+}
+function bgmStop() { bgm.playing = false; clearInterval(bgm.timer); }
+function bgmTick() {
+  if (!AC || !bgm.playing) return;
+  if (bgm.next < AC.currentTime - 0.1) bgm.next = AC.currentTime + 0.05; // 裏に回っていた時は追いつかせない
+  while (bgm.next < AC.currentTime + 0.3) { bgmStep(bgm.step, bgm.next); bgm.step++; bgm.next += STEP; }
+}
+function bgmStep(n, t) {
+  const ac = AC, i = n % 32, loop = Math.floor(n / 32), beat = i % 8;
+  const envGain = (a, atk, dur, dest = bgmBus) => { const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a, t + atk); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); g.connect(dest); return g; };
+  const noiseHit = (type, freq, q, a, dur) => { const s = ac.createBufferSource(); s.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; s.connect(f); f.connect(envGain(a, 0.002, dur)); s.start(t, Math.random() * 0.3); s.stop(t + dur + 0.02); };
+  // ドラム（ブラシっぽく）
+  noiseHit('highpass', 7000, 0.7, beat % 2 ? 0.22 : 0.1, 0.035);
+  if (beat === 2 || beat === 6) noiseHit('bandpass', 1800, 0.6, 0.3, 0.14);
+  if (beat === 0 || beat === 4) { const o = ac.createOscillator(); o.frequency.setValueAtTime(100, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12); o.connect(envGain(0.6, 0.003, 0.15)); o.start(t); o.stop(t + 0.17); }
+  // ウッドベース
+  if (BASS[i]) {
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 650; f.connect(envGain(0.55, 0.006, 0.3));
+    for (const [type, a] of [['triangle', 1], ['sawtooth', 0.3]]) { const o = ac.createOscillator(); o.type = type; o.frequency.value = mtof(BASS[i]); const g = ac.createGain(); g.gain.value = a; o.connect(g); g.connect(f); o.start(t); o.stop(t + 0.32); }
+  }
+  // ブラスの「ジャッ」
+  const stab = (notes, a, dur) => {
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(3000, t + 0.04); f.frequency.exponentialRampToValueAtTime(700, t + dur);
+    const g = envGain(a, 0.015, dur); f.connect(g); const r = ac.createGain(); r.gain.value = 0.3; g.connect(r); r.connect(revIn);
+    for (const m of notes) for (const det of [-7, 7]) { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(m); o.detune.value = det; o.connect(f); o.start(t); o.stop(t + dur + 0.05); }
+  };
+  if (i === 0 && loop % 2 === 0) stab([52, 55, 59, 63], 0.13, 0.45);   // Em(maj7)
+  if (i === 24 && loop % 2 === 0) stab([47, 51, 54, 57], 0.12, 0.4);   // B7
+  if (i === 31 && loop % 4 === 3) stab([52, 55, 59, 63, 66], 0.15, 1.4);
+  // サーフギター（2回に1回メロディ）
+  if (loop % 2 === 1 && LEAD[i]) {
+    const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(LEAD[i]);
+    const lfo = ac.createOscillator(); lfo.frequency.value = 6; const lg = ac.createGain(); lg.gain.value = 12; lfo.connect(lg); lg.connect(o.detune);
+    const sh = ac.createWaveShaper(); const curve = new Float32Array(256); for (let k = 0; k < 256; k++) curve[k] = Math.tanh((k / 128 - 1) * 3); sh.curve = curve;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2400;
+    const g = envGain(0.1, 0.005, 0.45); const r = ac.createGain(); r.gain.value = 0.5; g.connect(r); r.connect(revIn);
+    o.connect(sh); sh.connect(f); f.connect(g); o.start(t); lfo.start(t); o.stop(t + 0.5); lfo.stop(t + 0.5);
+  }
+}
 
 // ---------------------------------------------------------------------
 //  3D の世界
@@ -872,7 +995,7 @@ function makeEnt(info) {
 
 function startGame(cfg) {
   endGame(true);
-  audio();
+  audio(); bgmStart();
   game = {
     ents: [], byId: new Map(), me: null, diff: cfg.diff, time: 0, timeLeft: MATCH_TIME, gold: null, over: false,
     packs: PACKS.map(([x, z]) => ({ x, z, avail: true, at: 0 })), snapT: 0, sendT: 0,
@@ -892,7 +1015,7 @@ function startGame(cfg) {
 function endGame(silent) {
   if (!game) return;
   for (const e of game.ents) scene.remove(e.root);
-  game = null;
+  game = null; bgmStop();
   if (document.pointerLockElement) document.exitPointerLock();
   $('hud').hidden = true; $('touch').hidden = true; $('lockhint').hidden = true;
   if (dmgCtx) { dmgCtx.setTransform(1, 0, 0, 1, 0, 0); dmgCtx.clearRect(0, 0, $('dmgdir').width, $('dmgdir').height); } dmgDrawn = false;
@@ -1073,7 +1196,7 @@ function handleEvent(ev) {
     const s = game.byId.get(ev.id);
     if (!Array.isArray(ev.a) || !Array.isArray(ev.b)) return;
     addTracer(ev.a.map(Number), ev.b.map(Number), !!ev.g);
-    sfx(ev.g ? 'gold' : 'shot', 0.8 * volAt(ev.a[0], ev.a[2]));
+    gunSound(!!ev.g, ev.a[0], ev.a[2], false);
     if (s) s.flashT = 0.06;
   } else if (ev.t === 'hit') {
     const v = game.byId.get(ev.v); if (!v) return;
@@ -1158,7 +1281,7 @@ function tryFire() {
   const L = Math.min(r.dist, 120);
   const a = [+(o.x + Math.cos(me.yaw) * 0.18).toFixed(2), +(o.y - 0.15).toFixed(2), +(o.z - Math.sin(me.yaw) * 0.18).toFixed(2)];
   const b = [+(o.x + d.x * L).toFixed(2), +(o.y + d.y * L).toFixed(2), +(o.z + d.z * L).toFixed(2)];
-  addTracer(a, b, gold); sfx(gold ? 'gold' : 'shot', 1);
+  addTracer(a, b, gold); gunSound(gold, 0, 0, true);
   muzzle.intensity = 2.5; flashMesh.material.opacity = 1; flashMesh.rotation.z = Math.random() * 3;
   if (net.isHost) hostFire(me, a, b, r.ent ? r.ent.id : null, r.head);
   else sendHost({ t: 'fire', a, b, tg: r.ent ? r.ent.id : null, h: r.head ? 1 : 0 });
@@ -1196,7 +1319,7 @@ canvas.addEventListener('mousedown', (e) => { if (e.button === 0 && document.poi
 addEventListener('mouseup', (e) => { if (e.button === 0 && !isTouch) input.fire = false; });
 addEventListener('mousemove', (e) => {
   if (!game || !game.me || document.pointerLockElement !== canvas) return;
-  const k = 0.0022 * settings.sens; game.me.yaw -= e.movementX * k; game.me.pitch = clamp(game.me.pitch - e.movementY * k, -1.3, 1.3);
+  const k = 0.0022 * settings.sens; game.lookInT = game.time; game.me.yaw -= e.movementX * k; game.me.pitch = clamp(game.me.pitch - e.movementY * k, -1.3, 1.3);
 });
 $('lockhint').addEventListener('click', () => { audio(); canvas.requestPointerLock && canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', updateLockHint);
@@ -1206,7 +1329,7 @@ function updateLockHint() { $('lockhint').hidden = isTouch || !game || game.over
 {
   const tz = { stick: null, look: null, fire: null, sx: 0, sy: 0, lx: 0, ly: 0 };
   const base = $('stickBase'), knob = $('stickKnob');
-  const look = (dx, dy) => { if (!game || !game.me) return; const k = 0.0065 * settings.sens; game.me.yaw -= dx * k; game.me.pitch = clamp(game.me.pitch - dy * k, -1.3, 1.3); };
+  const look = (dx, dy) => { if (!game || !game.me) return; const k = 0.0065 * settings.sens; game.lookInT = game.time; game.me.yaw -= dx * k; game.me.pitch = clamp(game.me.pitch - dy * k, -1.3, 1.3); };
   const sz = $('stickZone');
   sz.addEventListener('pointerdown', (e) => { audio(); tz.stick = e.pointerId; tz.sx = e.clientX; tz.sy = e.clientY; base.style.left = e.clientX + 'px'; base.style.top = e.clientY + 'px'; base.hidden = false; knob.style.transform = ''; sz.setPointerCapture(e.pointerId); });
   sz.addEventListener('pointermove', (e) => {
@@ -1232,6 +1355,18 @@ function updateLockHint() { $('lockhint').hidden = isTouch || !game || game.over
   }
   $('reloadBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (game) startReload(); });
 }
+// スマホで画面がズームしたりスクロールしたりしないように
+for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (game && !e.target.closest('.overlay')) e.preventDefault(); }, { passive: false });
+{
+  let lastEnd = 0;
+  document.addEventListener('touchend', (e) => { // ダブルタップでの拡大を止める
+    const now = Date.now();
+    if (game && now - lastEnd < 350 && !e.target.closest('.overlay')) e.preventDefault();
+    lastEnd = now;
+  }, { passive: false });
+}
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
 $('menuBtn').onclick = () => {
   if (!confirm(net.mode === 'solo' ? 'ゲームをやめてタイトルにもどる？' : net.isHost ? '部屋をとじて、みんなの試合を終わらせる？' : '試合から抜ける？（あなたの代わりに CPU が戦います）')) return;
   leaveAll(); showTitle();
@@ -1281,7 +1416,9 @@ function step(dt) {
     game.lock = null;
     if (near) {
       game.lookAt = near.e; game.lookT = game.time;
-      if (settings.assist) {
+      // 自分で動かしている時だけ吸いつく（何もしていない時に勝手に画面が動かないように）
+      const active = input.fire || k.Space || L > 0.1 || game.time - (game.lookInT || -9) < 0.3;
+      if (settings.assist && active) {
         const ty = Math.atan2(-(near.e.rx - me.x), -(near.e.rz - me.z));
         const flat = Math.hypot(near.e.rx - me.x, near.e.rz - me.z), tp = Math.atan2(1.2 - EYE, flat);
         const a = Math.min(1, dt * (isTouch ? 4 : 2.5)) * (1 - near.ang / (cone * 1.3));
@@ -1330,7 +1467,7 @@ function step(dt) {
   // カメラ
   if (me) {
     if (me.alive) {
-      const bob = Math.sin(me.walk) * 0.04;
+      const bob = Math.sin(me.walk) * 0.012;
       camera.position.set(me.x, EYE + bob, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
       viewGun.visible = true;
     } else {
