@@ -282,6 +282,7 @@
       <ul>
         <li>最大6人で撃ち合い！（人数は 4・5・6 人から選べて、足りない分は CPU）先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
         <li>👥 チーム戦（2対2）：赤チームと青チームに分かれて、先にチームで <b>12人</b> たおした方の勝ち。味方は撃っても当たりません。</li>
+        <li>⌛ 接近戦・バリカンの金の武器（ゴールデンナイフ／ゴールデンバリカン）は 20 秒で消えて、10 秒後にまん中へ復活します。金の銃はそのまま。</li>
         <li>💈 バリカンのみ：みんなロン毛からスタート！バリカンで刈られるほど短くなって、ボーズになったら負け。🦱カツラで髪がのびる。まん中のゴールデンボールはゴールデンバリカン（一発でボーズ）。</li>
         <li>🔪 接近戦のみ：銃なし！みんなナイフで始まり、宝箱から 🗡剣 や ✨🪚金のチェーンソー（15秒・最強）が出ます。</li>
         <li>💬 スタンプ：試合中は 💬 ボタン、作戦会議室は下のボタンから。「よろしくお願いします」「www」などを頭の上に出せます。</li>
@@ -545,6 +546,8 @@ const MELEE = {
 const RULES = { gun: '🔫 銃あり', melee: '🔪 接近戦のみ', clip: '💈 バリカンのみ' };
 const meleeRule = () => !!game && (game.rule === 'melee' || game.rule === 'clip'); // 近づいて戦うルール
 const baseWeapon = () => (game && game.rule === 'clip' ? 'clip' : 'knife');
+const GOLD_TIME = 20, GOLD_BACK = 10; // 接近戦・バリカンの金の武器は 20 秒で消えて、10 秒後に台へ復活
+const goldName = () => (game && game.rule === 'clip' ? 'ゴールデンバリカン' : game && game.rule === 'melee' ? 'ゴールデンナイフ' : 'ゴールデンボール');
 const HAIR_COLORS = ['#1a1410', '#3b2416', '#5a3a1e', '#c9a46a', '#2a2a2a', '#7a3b8f'];
 const MODES = { ffa: '個人戦', '2v2': 'チーム 2対2', '3v1': '3対1 ボス戦' };
 const TEAM_WIN = 12, BOSS_TAKE = 0.4;
@@ -1946,7 +1949,7 @@ function hostTick(dt) {
       if (game.time >= e.respawnAt && e.respawnAt > 0) { e.respawnAt = 0; hostSpawn(e); }
       continue;
     }
-    if (!game.gold && Math.hypot(e.x, e.z) < 1.7) emit({ t: 'gold', id: e.id });
+    if (!game.gold && !(game.goldBack > game.time) && Math.hypot(e.x, e.z) < 1.7) emit({ t: 'gold', id: e.id, dur: meleeRule() ? GOLD_TIME : 0 });
     for (let i = 0; i < game.packs.length; i++) {
       const p = game.packs[i];
       if (p.avail && e.hp < MAX_HP && Math.hypot(e.x - p.x, e.z - p.z) < 1.1) {
@@ -1957,6 +1960,7 @@ function hostTick(dt) {
     }
   }
   for (const p of game.packs) if (!p.avail && game.time >= p.at) p.avail = true;
+  if (game.gold && game.goldUntil && game.time >= game.goldUntil) emit({ t: 'gold', id: null, back: GOLD_BACK, exp: 1 }); // 金の武器が自然消滅
   // 宝箱とアイテム
   for (const e of game.ents) {
     if (!e.alive) continue;
@@ -1979,7 +1983,8 @@ function hostTick(dt) {
   game.snapT -= dt;
   if (game.snapT <= 0 && net.mode === 'host') {
     game.snapT = 1 / 15;
-    broadcast({ t: 'snap', tl: Math.round(game.timeLeft * 10) / 10, g: game.gold, pk: game.packs.map((p) => (p.avail ? 1 : 0)),
+    broadcast({ t: 'snap', tl: Math.round(game.timeLeft * 10) / 10, g: game.gold,
+      gu: game.goldUntil ? Math.max(0, +(game.goldUntil - game.time).toFixed(1)) : 0, gb: game.goldBack ? Math.max(0, +(game.goldBack - game.time).toFixed(1)) : 0, pk: game.packs.map((p) => (p.avail ? 1 : 0)),
       ch: game.chests.map((c) => (c.open ? 1 : 0)), it: game.items.map((it) => [it.iid, it.k, it.x, it.z]),
       e: game.ents.map((e) => [e.id, +e.x.toFixed(2), +e.z.toFixed(2), +e.yaw.toFixed(3), +e.pitch.toFixed(3), e.hp, e.alive ? 1 : 0, e.kills, e.deaths, e.helmLv, Math.round(e.helmDur), e.ar, +(e.y || 0).toFixed(2), e.mw, +(e.sawT || 0).toFixed(1),
         (fxOn(e, 'cloak') ? 1 : 0) | (fxOn(e, 'mush') ? 2 : 0) | (fxOn(e, 'wing') ? 4 : 0)]) });
@@ -2135,10 +2140,16 @@ function handleEvent(ev) {
     if (e === me) { game.ammo = MAG; game.reloadT = 0; }
     refreshFace(e);
   } else if (ev.t === 'gold') {
+    const prev = game.gold && game.byId.get(game.gold);
     game.gold = ev.id || null;
+    game.goldUntil = ev.id && num(ev.dur) > 0 ? game.time + num(ev.dur) : 0;
+    game.goldBack = !ev.id && num(ev.back) > 0 ? game.time + num(ev.back) : 0;
     const e = ev.id && game.byId.get(ev.id);
-    if (e) { feed(`✨ ${e.name} がゴールデンボールを手に入れた！`); sfx('pickup', 0.9); if (e === me) { game.ammo = 1; game.reloadT = 0; } }
-    else if (me && game.ammo > MAG) game.ammo = MAG;
+    if (e) { feed(`✨ ${e.name} が${goldName()}を手に入れた！${game.goldUntil ? `（${num(ev.dur)}秒）` : ''}`); sfx('pickup', 0.9); if (e === me && !meleeRule()) { game.ammo = 1; game.reloadT = 0; } }
+    else {
+      if (me && game.ammo > MAG) game.ammo = MAG;
+      if (ev.exp && prev) feed(`⌛ ${prev.name} の${goldName()}が消えた！（${num(ev.back)}秒後にまん中に復活）`);
+    }
   } else if (ev.t === 'heal') {
     const e = game.byId.get(ev.id); if (!e) return;
     e.hp = num(ev.hp, e.hp); if (game.packs[ev.p]) { game.packs[ev.p].avail = false; game.packs[ev.p].at = game.time + 20; }
@@ -2179,6 +2190,8 @@ function applySnap(s) {
   if (!game || !Array.isArray(s.e)) return;
   game.timeLeft = num(s.tl, game.timeLeft);
   game.gold = s.g || null;
+  if (typeof s.gu === 'number') game.goldUntil = s.gu > 0 ? game.time + s.gu : 0;
+  if (typeof s.gb === 'number') game.goldBack = s.gb > 0 ? game.time + s.gb : 0;
   if (Array.isArray(s.pk)) s.pk.forEach((v, i) => { if (game.packs[i]) game.packs[i].avail = !!v; });
   if (Array.isArray(s.ch)) s.ch.forEach((v, i) => { if (game.chests[i]) game.chests[i].open = !!v; });
   if (Array.isArray(s.it)) game.items = s.it.filter((r) => Array.isArray(r) && ['ar', 'med', 'h1', 'h2', 'h3', 'cloak', 'mush', 'wing', 'sword', 'saw'].includes(r[1])).map(([iid, k, x, z]) => ({ iid: num(iid), k, x: num(x), z: num(z) }));
@@ -2465,7 +2478,7 @@ function frame(now) {
     if (t.life <= 0) { scene.remove(t.m); t.m.geometry.dispose(); t.m.material.dispose(); tracers.splice(i, 1); }
   }
   goldBall.rotation.y += dt * 2; goldBall.position.y = 1.25 + Math.sin(now / 400) * 0.08;
-  goldBall.visible = !game || !game.gold; goldLight.intensity = goldBall.visible ? 1.2 : 0;
+  goldBall.visible = !game || (!game.gold && !(game.goldBack > game.time)); goldLight.intensity = goldBall.visible ? 1.2 : 0;
   const clipMode = !!game && game.rule === 'clip';
   packMeshes.forEach((m, i) => { m.rotation.y += dt * 1.5; m.visible = (!game || game.packs[i].avail) && !clipMode; });
   wigMeshes.forEach((m, i) => { m.rotation.y += dt * 1.5; m.visible = clipMode && game.packs[i].avail; });
@@ -2627,7 +2640,8 @@ function step(dt) {
     if (meleeRule()) {
       const M = MELEE[me.mw] || MELEE.knife;
       $('ammoNum').textContent = M.icon;
-      $('ammoSub').textContent = (iGold ? (game.rule === 'clip' ? '✨ ゴールデンバリカン！一発でボーズ ' : '✨ 一撃でたおせる！ ') : '') + M.name + (me.mw === 'saw' ? `（燃料 ${Math.max(0, Math.ceil(me.sawT))}秒）` : '');
+      const gl = game.goldUntil ? `あと${Math.max(0, Math.ceil(game.goldUntil - game.time))}秒 ` : '';
+      $('ammoSub').textContent = (iGold ? (game.rule === 'clip' ? `✨ ゴールデンバリカン！一発でボーズ ${gl}` : `✨ ゴールデンナイフ！一撃でたおせる ${gl}`) : '') + M.name + (me.mw === 'saw' ? `（燃料 ${Math.max(0, Math.ceil(me.sawT))}秒）` : '');
       $('fireBtn').textContent = M.icon;
     } else {
       $('ammoNum').textContent = rifle ? me.ar : game.reloadT > 0 ? '…' : game.ammo;
@@ -2662,8 +2676,8 @@ function step(dt) {
     drawDmgDirs(dt, me);
   }
   const gh = game.gold && game.byId.get(game.gold);
-  const gname = game.rule === 'clip' ? 'ゴールデンバリカン' : 'ゴールデンボール';
-  $('goldmsg').textContent = gh ? `✨ ${gname}：${gh.name}` : `✨ ${gname}はまん中の台`;
+  const gname = goldName(), left = Math.max(0, Math.ceil((game.goldUntil || 0) - game.time)), back = Math.max(0, Math.ceil((game.goldBack || 0) - game.time));
+  $('goldmsg').textContent = gh ? `✨ ${gname}：${gh.name}${game.goldUntil ? `（あと${left}秒）` : ''}` : back ? `✨ ${gname}は ${back}秒後にまん中に復活` : `✨ ${gname}はまん中の台`;
   renderBoard();
 }
 requestAnimationFrame(frame);
