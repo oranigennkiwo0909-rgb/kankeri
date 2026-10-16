@@ -26,6 +26,9 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; overscroll-behavior: none;
     -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
     font-family: var(--font); -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  /* 縦向きロックでも横画面で遊べるよう、#app ごと 90 度回せる */
+  #app { position: fixed; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; }
+  #app.rot { transform-origin: 0 0; transform: rotate(90deg); }
   canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
   .overlay { position: fixed; inset: 0; display: flex; align-items: flex-start; justify-content: center;
@@ -172,6 +175,7 @@
 </style>
 </head>
 <body>
+<div id="app">
 <canvas id="game"></canvas>
 
 <!-- ===== タイトル ===== -->
@@ -292,6 +296,9 @@
     <div class="seg2"><button id="assistOn">オン</button><button id="assistOff">オフ</button></div>
     <span class="field">やられた時の声（えらぶと試しに鳴ります）</span>
     <div class="vgrid" id="voiceGrid"></div>
+    <span class="field">画面の向き（スマホ）</span>
+    <div class="seg2" id="orientSeg"><button data-o="auto">自動（スマホの向きのまま）</button><button data-o="land">横画面に固定</button></div>
+    <div class="mini" style="margin-top:4px">縦向きロック中や LINE の中で横にならない時は「横画面に固定」にしてね</div>
     <span class="field">ボタンの位置（スマホ）</span>
     <button class="secondary" id="layoutBtn" style="margin-top:0">🕹 ボタンの位置・大きさを変える</button>
     <span class="field">BGM の音量：<b id="bgmVal">35</b></span>
@@ -334,6 +341,7 @@
   <button id="fireBtn">🔫</button>
 </div>
 
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
@@ -357,6 +365,24 @@ const store = {
 };
 const cleanName = (s, n = 10) => String(s || '').replace(/[<>&"'\u0000-\u001f]/g, '').trim().slice(0, n);
 const isTouch = matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window && navigator.maxTouchPoints > 0);
+// 画面の大きさ（横画面に固定で回している時は、縦と横を入れかえる）
+const view = { w: innerWidth, h: innerHeight, rot: false };
+function applyOrient() {
+  const app = document.getElementById('app'), W = innerWidth, H = innerHeight;
+  view.rot = isTouch && typeof settings !== 'undefined' && settings.orient === 'land' && H > W;
+  app.classList.toggle('rot', view.rot);
+  if (view.rot) { Object.assign(app.style, { width: H + 'px', height: W + 'px', left: W + 'px', top: '0px' }); view.w = H; view.h = W; }
+  else { Object.assign(app.style, { width: '', height: '', left: '', top: '' }); view.w = W; view.h = H; }
+}
+// 指の位置を、ゲーム画面の中の位置に直す
+function loc(e) { return view.rot ? { x: e.clientY, y: innerWidth - e.clientX } : { x: e.clientX, y: e.clientY }; }
+// Android はフルスクリーン＋向きロックで本当に横にする（iPhone は回転表示で対応）
+function tryLockLandscape() {
+  if (settings.orient !== 'land' || !isTouch || !screen.orientation || !screen.orientation.lock) return;
+  const lock = () => screen.orientation.lock('landscape').catch(() => {});
+  if (document.fullscreenElement) lock();
+  else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().then(lock).catch(() => {});
+}
 
 // ---------------------------------------------------------------------
 //  ルール
@@ -710,11 +736,11 @@ $('dmgPrev').oninput = drawPreview;
 {
   let drag = null;
   const pv = $('facePrev');
-  pv.addEventListener('pointerdown', (e) => { if (!srcImg) return; drag = { x: e.clientX, y: e.clientY }; pv.setPointerCapture(e.pointerId); });
+  pv.addEventListener('pointerdown', (e) => { if (!srcImg) return; drag = loc(e); pv.setPointerCapture(e.pointerId); });
   pv.addEventListener('pointermove', (e) => {
     if (!drag || !srcImg) return;
     const s = Math.min(srcImg.naturalWidth, srcImg.naturalHeight) / crop.zoom, k = s / pv.clientWidth;
-    crop.ox -= (e.clientX - drag.x) * k; crop.oy -= (e.clientY - drag.y) * k; drag = { x: e.clientX, y: e.clientY }; makeCrop();
+    const q = loc(e); crop.ox -= (q.x - drag.x) * k; crop.oy -= (q.y - drag.y) * k; drag = q; makeCrop();
   });
   const end = () => { drag = null; };
   pv.addEventListener('pointerup', end); pv.addEventListener('pointercancel', end);
@@ -727,7 +753,7 @@ const myName = () => cleanName($('nameInput').value) || 'ななしのスパイ';
 // 設定（端末ごとに保存）
 const settings = { sens: clamp(Number(store.get('gb_sens')) || 1, 0.2, 3), assist: store.get('gb_assist') !== '0',
   bgm: store.get('gb_bgm') == null ? 40 : clamp(Number(store.get('gb_bgm')) || 0, 0, 100),
-  voice: store.get('gb_voice') || 'm2', loot: null };
+  voice: store.get('gb_voice') || 'm2', loot: null, orient: store.get('gb_orient') === 'land' ? 'land' : 'auto' };
 const LOOT_KINDS = [['ar', '🔫 ライフル'], ['helm', '⛑ ヘルメット'], ['med', '💊 救急箱'], ['cloak', '🫥 マント'], ['mush', '🍄 キノコ'], ['wing', '🪶 羽根']];
 try { const l = JSON.parse(store.get('gb_loot') || 'null'); settings.loot = Array.isArray(l) ? l.filter((k) => LOOT_KINDS.some(([kk]) => kk === k)) : null; } catch (e) {}
 if (!settings.loot) settings.loot = LOOT_KINDS.map(([k]) => k);
@@ -747,6 +773,7 @@ function renderSettings() {
   $('sensRange').value = Math.round(settings.sens * 100); $('sensVal').textContent = settings.sens.toFixed(2).replace(/0$/, '');
   $('assistOn').className = settings.assist ? 'on' : ''; $('assistOff').className = settings.assist ? '' : 'on';
   $('bgmRange').value = settings.bgm; $('bgmVal').textContent = settings.bgm ? settings.bgm : 'オフ';
+  for (const b of $('orientSeg').children) b.className = b.dataset.o === settings.orient ? 'on' : '';
   const vg = $('voiceGrid'); vg.innerHTML = '';
   for (const [k, v] of Object.entries(VOICES)) {
     const b = document.createElement('button'); b.textContent = v.label; b.className = settings.voice === k ? 'on' : '';
@@ -765,6 +792,7 @@ $('assistOn').onclick = () => { settings.assist = true; store.set('gb_assist', '
 $('assistOff').onclick = () => { settings.assist = false; store.set('gb_assist', '0'); renderSettings(); };
 $('settingsClose').onclick = () => { $('settings').hidden = true; updateLockHint(); };
 $('titleSetBtn').onclick = () => { audio(); openSettings(); };
+for (const b of $('orientSeg').children) b.onclick = () => { settings.orient = b.dataset.o; store.set('gb_orient', settings.orient); renderSettings(); resize(); tryLockLandscape(); };
 $('hudSetBtn').onclick = openSettings;
 
 let diff = DIFF[store.get('gb_diff')] ? store.get('gb_diff') : 'normal';
@@ -1012,7 +1040,11 @@ const sun = new THREE.DirectionalLight('#fff3dc', 0.85); sun.position.set(12, 30
 sun.castShadow = true; sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -33, right: 33, top: 33, bottom: -33, near: 1, far: 80 }); sun.shadow.bias = -0.0008;
 const fill = new THREE.DirectionalLight('#cfe0ff', 0.25); fill.position.set(-14, 10, -12); scene.add(fill);
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function resize() {
+  applyOrient();
+  const w = view.w, h = view.h; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  try { applyBtnLayout(); } catch (e) {} // 読みこみ直後はまだ準備前
+}
 addEventListener('resize', resize); resize();
 
 function canvasTex(w, h, draw, rep) {
@@ -1326,6 +1358,8 @@ function startGame(cfg) {
   $('hpname').textContent = game.me ? game.me.name : '';
   $('feed').innerHTML = '';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
+  tryLockLandscape();
+  if (isTouch && !view.rot && innerHeight > innerWidth) feed('📱 横にすると遊びやすいよ（横にならない時は ⚙設定 →「横画面に固定」）');
   updateLockHint();
 }
 function endGame(silent) {
@@ -1752,8 +1786,8 @@ function applyBtnLayout() {
   }
 }
 function layoutOf(id) { // いまの見た目の位置を割合で
-  const el = $(id), r = el.getBoundingClientRect();
-  return btnLayout[id] || { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight, s: 1 };
+  const el = $(id), r = el.getBoundingClientRect(), c = loc({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+  return btnLayout[id] || { x: c.x / view.w, y: c.y / view.h, s: 1 };
 }
 function startLayoutEdit() {
   layoutEditing = true; $('settings').hidden = true;
@@ -1773,7 +1807,7 @@ for (const id of LAYOUT_IDS) {
     if (!layoutEditing) return;
     e.stopImmediatePropagation(); e.preventDefault();
     layoutSel = id; const L = layoutOf(id); btnLayout[id] = L;
-    drag = { id: e.pointerId, ox: e.clientX - L.x * innerWidth, oy: e.clientY - L.y * innerHeight };
+    const q = loc(e); drag = { id: e.pointerId, ox: q.x - L.x * view.w, oy: q.y - L.y * view.h };
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
     $('btnSize').value = Math.round((L.s || 1) * 100); applyBtnLayout();
   }, true);
@@ -1782,7 +1816,7 @@ for (const id of LAYOUT_IDS) {
     e.stopImmediatePropagation();
     if (!drag || e.pointerId !== drag.id) return;
     const L = btnLayout[id];
-    L.x = clamp((e.clientX - drag.ox) / innerWidth, 0.04, 0.96); L.y = clamp((e.clientY - drag.oy) / innerHeight, 0.06, 0.94);
+    const q = loc(e); L.x = clamp((q.x - drag.ox) / view.w, 0.04, 0.96); L.y = clamp((q.y - drag.oy) / view.h, 0.06, 0.94);
     applyBtnLayout();
   }, true);
   const end = (e) => { if (!layoutEditing) return; e.stopImmediatePropagation(); drag = null; };
@@ -1800,10 +1834,10 @@ applyBtnLayout();
   const base = $('stickBase'), knob = $('stickKnob');
   const look = (dx, dy) => { if (!game || !game.me) return; const k = 0.0065 * settings.sens; game.lookInT = game.time; game.me.yaw -= dx * k; game.me.pitch = clamp(game.me.pitch - dy * k, -1.3, 1.3); };
   const sz = $('stickZone');
-  sz.addEventListener('pointerdown', (e) => { audio(); tz.stick = e.pointerId; tz.sx = e.clientX; tz.sy = e.clientY; base.style.left = e.clientX + 'px'; base.style.top = e.clientY + 'px'; base.hidden = false; knob.style.transform = ''; sz.setPointerCapture(e.pointerId); });
+  sz.addEventListener('pointerdown', (e) => { audio(); const q = loc(e); tz.stick = e.pointerId; tz.sx = q.x; tz.sy = q.y; base.style.left = q.x + 'px'; base.style.top = q.y + 'px'; base.hidden = false; knob.style.transform = ''; try { sz.setPointerCapture(e.pointerId); } catch (err) {} });
   sz.addEventListener('pointermove', (e) => {
     if (e.pointerId !== tz.stick) return;
-    let dx = e.clientX - tz.sx, dy = e.clientY - tz.sy; const L = Math.hypot(dx, dy), R = 50;
+    const q = loc(e); let dx = q.x - tz.sx, dy = q.y - tz.sy; const L = Math.hypot(dx, dy), R = 50;
     if (L > R) { dx *= R / L; dy *= R / L; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`; input.s = dx / R; input.f = -dy / R;
   });
@@ -1811,13 +1845,13 @@ applyBtnLayout();
   sz.addEventListener('pointerup', endStick); sz.addEventListener('pointercancel', endStick);
   for (const el of [$('lookZone'), $('fireBtn')]) {
     el.addEventListener('pointerdown', (e) => {
-      audio(); el.setPointerCapture(e.pointerId);
+      audio(); try { el.setPointerCapture(e.pointerId); } catch (err) {}
       if (el.id === 'fireBtn') { tz.fire = e.pointerId; input.fire = true; } else tz.look = e.pointerId;
-      el._lx = e.clientX; el._ly = e.clientY;
+      const q = loc(e); el._lx = q.x; el._ly = q.y;
     });
     el.addEventListener('pointermove', (e) => {
       if (e.pointerId !== tz.look && e.pointerId !== tz.fire) return;
-      look(e.clientX - el._lx, e.clientY - el._ly); el._lx = e.clientX; el._ly = e.clientY;
+      const q = loc(e); look(q.x - el._lx, q.y - el._ly); el._lx = q.x; el._ly = q.y;
     });
     const end = (e) => { if (e.pointerId === tz.fire) { tz.fire = null; input.fire = false; } if (e.pointerId === tz.look) tz.look = null; };
     el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
@@ -2027,7 +2061,7 @@ function drawDmgDirs(dt, me) {
   const cv = $('dmgdir');
   const list = (game.dmgDirs || []).filter((x) => (x.life -= dt) > 0); game.dmgDirs = list;
   if (!list.length && !dmgDrawn) return;
-  const W = innerWidth, H = innerHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = view.w, H = view.h, dpr = Math.min(2, window.devicePixelRatio || 1);
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); dmgCtx = null; }
   const x = dmgCtx || (dmgCtx = cv.getContext('2d'));
   x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
