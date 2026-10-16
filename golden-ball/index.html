@@ -161,6 +161,13 @@
   #layoutPanel { position: fixed; z-index: 42; left: 50%; top: max(10px, env(safe-area-inset-top, 0px)); transform: translateX(-50%);
     width: min(420px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
   #layoutPanel p { margin: 0 0 6px; font-size: 13px; text-align: center; color: var(--muted); }
+  .seg3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .seg3 button { padding: 9px 4px; font-size: 13px; }
+  .team { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: none; color: #fff; flex: none; font-weight: bold; }
+  .team.t0 { background: #c0392b; } .team.t1 { background: #2e6bd1; }
+  .members li.t0 { border-left: 5px solid #c0392b; } .members li.t1 { border-left: 5px solid #2e6bd1; }
+  .sc.t0 { border-left: 4px solid #e0503f; } .sc.t1 { border-left: 4px solid #4a86ea; }
+  #teamScore { font-size: 16px; font-weight: 900; text-shadow: 0 1px 3px #000; text-align: right; }
   .vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .vgrid button { padding: 8px 4px; font-size: 13px; }
 
@@ -201,6 +208,9 @@
     <div class="slider-row"><span>🤕 ダメージ</span><input type="range" id="dmgPrev" min="0" max="100" value="0"></div>
     <div class="mini">↑ スライダーを動かすと、やられた時のボロボロ具合を見られます</div>
 
+    <span class="field">モード</span>
+    <div class="seg3" id="modeSeg"></div>
+    <div id="soloTeamBox" style="margin-top:6px"></div>
     <span class="field">CPU のつよさ</span>
     <div class="seg" id="diffSeg"></div>
     <span class="field">🎁 宝箱の中身（チェックしたものだけ出ます）</span>
@@ -214,6 +224,8 @@
       <summary>あそびかた</summary>
       <ul>
         <li>4人で撃ち合い！先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
+        <li>👥 チーム戦（2対2）：赤チームと青チームに分かれて、先にチームで <b>12人</b> たおした方の勝ち。味方は撃っても当たりません。</li>
+        <li>👑 3対1（ボス戦）：1人側はボス。受けるダメージが 40% になる代わりに、3人を相手にします。</li>
         <li>まん中の台にある <b>ゴールデンボール</b> を取ると、銃が金色になって <b>一発でたおせる</b>！やられると台にもどります。</li>
         <li>白い箱（救急箱）で体力が回復。顔のキズも少しなおります。</li>
         <li>🎁 宝箱に近づくと開いて、アイテムが出てきます：<b>アサルトライフル</b>（40発の連射・弾がなくなったら捨てる）、<b>ヘルメット</b>、救急箱。</li>
@@ -265,6 +277,8 @@
     <div id="hostOnly">
       <span class="field">足りない人数の CPU のつよさ</span>
       <div class="seg" id="lobbyDiffSeg"></div>
+      <span class="field">モード（チームは下のリストの色ボタンで入れかえ）</span>
+      <div class="seg3" id="lobbyModeSeg"></div>
       <span class="field">🎁 宝箱の中身（チェックしたものだけ出ます）</span>
       <div class="chips" id="lobbyLootChips"></div>
       <button class="primary" id="startBtn">スタート！</button>
@@ -323,7 +337,7 @@
     <div id="hpwrap"><div id="hpname"></div><div id="hpbar"><div id="hpfill"></div></div><div id="hptext"></div><div id="helmRow"><span id="helmTxt">⛑ なし</span><div id="helmbar"><div id="helmfill"></div></div></div><div id="fxRow"></div></div>
   </div>
   <div id="goldmsg"></div>
-  <div id="board"><div id="timer"></div></div>
+  <div id="board"><div id="timer"></div><div id="teamScore" hidden></div></div>
   <div id="feed"></div>
   <canvas id="dmgdir"></canvas>
   <div id="tcard" hidden><canvas width="128" height="128"></canvas><div><div class="tn"></div><div class="tbar"><div></div></div></div></div>
@@ -403,6 +417,10 @@ const DIFF = {
   hard:   { label: 'むずかしい', react: 0.35, err: 0.028, gap: 0.45, range: 45, turn: 5.5, speed: 4.7 },
   agent:  { label: '008級',      react: 0.2,  err: 0.013, gap: 0.34, range: 60, turn: 8.0, speed: 5.2 },
 };
+const MODES = { ffa: '個人戦', '2v2': 'チーム 2対2', '3v1': '3対1 ボス戦' };
+const TEAM_WIN = 12, BOSS_TAKE = 0.4;
+const TEAM_COLORS = ['#a8302a', '#2a4f9a'], TEAM_NAMES = ['🔴 赤チーム', '🔵 青チーム'];
+function defaultTeams(m) { return m === '2v2' ? [0, 1, 0, 1] : m === '3v1' ? [0, 0, 0, 1] : [0, 1, 2, 3]; }
 const CPU_NAMES = ['CPU ミスターX', 'CPU ドクターQ', 'CPU エージェントK', 'CPU マダムM'];
 const SUITS = ['#2d3b58', '#5c2a2a', '#2c5a3b', '#5c4a24'];
 
@@ -796,6 +814,29 @@ for (const b of $('orientSeg').children) b.onclick = () => { settings.orient = b
 $('hudSetBtn').onclick = openSettings;
 
 let diff = DIFF[store.get('gb_diff')] ? store.get('gb_diff') : 'normal';
+let gmode = MODES[store.get('gb_mode')] ? store.get('gb_mode') : 'ffa';
+let soloBoss = store.get('gb_boss') === '1';
+let teams = defaultTeams(gmode); // 4 つの席それぞれのチーム
+function renderMode(segId, onPick) {
+  const seg = $(segId); seg.innerHTML = '';
+  for (const k of Object.keys(MODES)) {
+    const b = document.createElement('button'); b.textContent = MODES[k]; b.className = k === gmode ? 'on' : '';
+    b.onclick = () => { gmode = k; store.set('gb_mode', k); teams = defaultTeams(k); renderMode(segId, onPick); if (onPick) onPick(); };
+    seg.appendChild(b);
+  }
+}
+function renderSoloTeam() {
+  const box = $('soloTeamBox'); box.innerHTML = '';
+  if (gmode === '2v2') { box.innerHTML = '<div class="mini">あなた＋CPU 1人 vs CPU 2人</div>'; return; }
+  if (gmode !== '3v1') return;
+  const row = document.createElement('div'); row.className = 'seg2';
+  for (const [v, label] of [[false, '3人側（ボスをたおす）'], [true, '👑 自分がボス']]) {
+    const b = document.createElement('button'); b.textContent = label; b.className = soloBoss === v ? 'on' : '';
+    b.onclick = () => { soloBoss = v; store.set('gb_boss', v ? '1' : '0'); renderSoloTeam(); };
+    row.appendChild(b);
+  }
+  box.appendChild(row);
+}
 function renderDiff(segId, onPick) {
   const seg = $(segId); seg.innerHTML = '';
   for (const k of Object.keys(DIFF)) {
@@ -805,6 +846,7 @@ function renderDiff(segId, onPick) {
   }
 }
 renderDiff('diffSeg');
+renderMode('modeSeg', renderSoloTeam); renderSoloTeam();
 renderLoot('lootChips');
 
 // ---------------------------------------------------------------------
@@ -1211,10 +1253,10 @@ function addTracer(a, b, gold) {
 // ---------------------------------------------------------------------
 //  キャラクター（体＋顔テクスチャ＋たんこぶ）
 // ---------------------------------------------------------------------
-function nameSprite(text) {
+function nameSprite(text, color = '#fff') {
   const c = document.createElement('canvas'); c.width = 256; c.height = 48; const x = c.getContext('2d');
   x.font = 'bold 28px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,.8)'; x.strokeText(text, 128, 24); x.fillStyle = '#fff'; x.fillText(text, 128, 24);
+  x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,.8)'; x.strokeText(text, 128, 24); x.fillStyle = color; x.fillText(text, 128, 24);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
   s.scale.set(1.25, 0.23, 1); return s;
 }
@@ -1222,7 +1264,7 @@ function nameSprite(text) {
 function buildChar(e) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const std = (color, rough = 0.7, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
-  const suit = std(SUITS[e.slot % 4], 0.8), pants = std('#1c1d22', 0.85), shoe = std('#0d0d0f', 0.35, 0.1);
+  const suit = std(e.suitColor || SUITS[e.slot % 4], 0.8), pants = std('#1c1d22', 0.85), shoe = std('#0d0d0f', 0.35, 0.1);
   e.skinMat = std('#e0b48c', 0.62); e.hairMat = std('#2a2420', 0.9);
   const add = (geo, mat, x, y, z, parent = body) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
   const leg = (sx) => {
@@ -1264,7 +1306,7 @@ function buildChar(e) {
   e.helmShown = 0; e.helmMesh = null;
   e.wings = makeWings(); e.wings.position.set(0, 0.74, -0.2); e.wings.visible = false; body.add(e.wings);
   e.wings.children.forEach((w) => { w.rotation.y = Math.PI; });
-  e.tag = nameSprite(e.name); e.tag.position.y = 2.05; root.add(e.tag);
+  e.tag = nameSprite((e.boss ? '👑 ' : '') + e.name, e.tagColor); e.tag.position.y = 2.05; root.add(e.tag);
   e.halo = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), goldMat); e.halo.position.y = 2.3; e.halo.visible = false; root.add(e.halo);
   e.root = root; e.body = body;
   scene.add(root);
@@ -1321,7 +1363,7 @@ function refreshFace(e, force) {
 let game = null;
 const input = { f: 0, s: 0, fire: false, keys: {} };
 
-function makeEnt(info) {
+function makeEnt(info, mode = 'ffa') {
   const e = {
     id: info.id, name: info.name, isBot: !!info.bot, slot: info.slot, seed: hashStr(info.id + '|' + info.name),
     faceImg: null, face: info.face || null,
@@ -1329,12 +1371,24 @@ function makeEnt(info) {
     hp: MAX_HP, alive: false, kills: 0, deaths: 0, respawnAt: 0, swell: 1, thumbs: [], faceKey: '', fall: 0, walk: 0,
     helmLv: 0, helmDur: 0, ar: 0, voice: VOICES[info.voice] ? info.voice : 'm1',
     y: 0, ry: 0, ty: 0, vy: 0, bigS: 1, cloakT: 0, mushT: 0, wingT: 0, fxBits: 0, invShown: false, swellV: [1, 1, 1],
+    team: mode === 'ffa' ? info.slot : num(info.team, 0), boss: false,
     // CPU 用
     path: [], repath: 0, target: null, seenAt: 0, nextFire: 0, ammo: MAG, strafe: 1, strafeT: 0, huntId: null,
   };
   if (info.id === net.myId && prof.faceImg) e.faceImg = prof.faceImg;
   else if (e.face) { const im = new Image(); im.onload = () => { e.faceImg = im; sampleColors(e); refreshFace(e, true); }; im.src = e.face; }
+  e.boss = mode === '3v1' && e.team === 1;
+  e.suitColor = mode === 'ffa' ? SUITS[e.slot % 4] : TEAM_COLORS[e.team ? 1 : 0];
+  e.tagColor = mode === 'ffa' ? '#ffffff' : e.team ? '#9cc0ff' : '#ffaaa0';
   buildChar(e);
+  if (e.boss) { // ボスは少し大きく、王冠つき
+    e.root.scale.setScalar(1.15);
+    const crown = new THREE.Group();
+    const gm = new THREE.MeshStandardMaterial({ color: '#ffd23a', metalness: 0.85, roughness: 0.25 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.09, 20, 1, true), gm); crown.add(band);
+    for (let k = 0; k < 6; k++) { const sp = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.13, 8), gm); const a = k / 6 * Math.PI * 2; sp.position.set(Math.cos(a) * 0.2, 0.1, Math.sin(a) * 0.2); crown.add(sp); }
+    crown.position.y = HEAD_R * 0.97; e.head.add(crown);
+  }
   sampleColors(e);
   refreshFace(e, true);
   return e;
@@ -1344,19 +1398,22 @@ function startGame(cfg) {
   endGame(true);
   audio(); bgmStart();
   game = {
-    ents: [], byId: new Map(), me: null, diff: cfg.diff, time: 0, timeLeft: MATCH_TIME, gold: null, over: false,
+    ents: [], byId: new Map(), me: null, diff: cfg.diff, mode: MODES[cfg.gmode] ? cfg.gmode : 'ffa', time: 0, timeLeft: MATCH_TIME, gold: null, over: false,
     packs: PACKS.map(([x, z]) => ({ x, z, avail: true, at: 0 })), snapT: 0, sendT: 0,
     chests: CHESTS.map(([x, z]) => ({ x, z, open: false, at: 0 })), items: [], itemSeq: 0, loot: Array.isArray(cfg.loot) ? cfg.loot : settings.loot,
     ammo: MAG, reloadT: 0, nextFire: 0, recoil: 0, hurt: 0, hitMark: 0, deathCam: 0, lastShotGold: false,
   };
   for (const info of cfg.roster) {
-    const e = makeEnt(info); game.ents.push(e); game.byId.set(e.id, e);
+    const e = makeEnt(info, MODES[cfg.gmode] ? cfg.gmode : 'ffa'); game.ents.push(e); game.byId.set(e.id, e);
     if (e.id === net.myId) { game.me = e; e.root.visible = false; }
   }
   buildBoard();
   hideAll(); $('hud').hidden = false; $('touch').hidden = !isTouch && !layoutEditing;
   $('hpname').textContent = game.me ? game.me.name : '';
   $('feed').innerHTML = '';
+  // 味方の名前は壁ごしにも見える／敵は見えない
+  for (const e of game.ents) e.tag.material.depthTest = !(game.me && e !== game.me && isAlly(e, game.me));
+  $('teamScore').hidden = game.mode === 'ffa';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
   tryLockLandscape();
   if (isTouch && !view.rot && innerHeight > innerWidth) feed('📱 横にすると遊びやすいよ（横にならない時は ⚙設定 →「横画面に固定」）');
@@ -1374,7 +1431,7 @@ function endGame(silent) {
 function buildBoard() {
   const board = $('board'); board.querySelectorAll('.sc').forEach((n) => n.remove());
   for (const e of game.ents) {
-    const d = document.createElement('div'); d.className = 'sc' + (e === game.me ? ' me' : '');
+    const d = document.createElement('div'); d.className = 'sc' + (e === game.me ? ' me' : '') + (game.mode !== 'ffa' ? ' t' + (e.team ? 1 : 0) : '');
     const c = document.createElement('canvas'); c.width = c.height = 60; e.thumbs = [c];
     const n = document.createElement('span'); n.className = 'n'; n.textContent = e.name;
     const k = document.createElement('span'); k.className = 'k'; k.textContent = '0';
@@ -1386,7 +1443,8 @@ function buildBoard() {
 }
 function renderBoard() {
   for (const e of game.ents) { e.scK.textContent = e.kills; e.scEl.classList.toggle('dead', !e.alive); }
-  const t = Math.max(0, Math.ceil(game.timeLeft)); $('timer').textContent = `⏱ ${(t / 60) | 0}:${String(t % 60).padStart(2, '0')}  🎯${WIN_KILLS}`;
+  const t = Math.max(0, Math.ceil(game.timeLeft)); $('timer').textContent = `⏱ ${(t / 60) | 0}:${String(t % 60).padStart(2, '0')}  🎯${game.mode === 'ffa' ? WIN_KILLS : TEAM_WIN}`;
+  if (game.mode !== 'ffa') $('teamScore').textContent = game.mode === '3v1' ? `3人 ${teamScore(0)} : ${teamScore(1)} 👑` : `🔴 ${teamScore(0)} : ${teamScore(1)} 🔵`;
 }
 function feed(parts) {
   const f = $('feed'), d = document.createElement('div');
@@ -1402,11 +1460,14 @@ function feed(parts) {
 // ---------------------------------------------------------------------
 //  ホストの仕事：出現・ダメージ・アイテム・CPU
 // ---------------------------------------------------------------------
+const isAlly = (a, b) => !!game && game.mode !== 'ffa' && a.team === b.team;
+const isEnemy = (a, b) => a !== b && !isAlly(a, b);
+const teamScore = (t) => game.ents.reduce((s, e) => s + (e.team === t ? e.kills : 0), 0);
 function pickSpawn(e) {
   let best = SPAWNS[0], bs = -1;
   for (const s of SPAWNS) {
     let m = 1e9;
-    for (const o of game.ents) if (o !== e && o.alive) m = Math.min(m, Math.hypot(o.x - s[0], o.z - s[1]));
+    for (const o of game.ents) if (isEnemy(o, e) && o.alive) m = Math.min(m, Math.hypot(o.x - s[0], o.z - s[1]));
     const score = m + Math.random() * 6;
     if (score > bs) { bs = score; best = s; }
   }
@@ -1420,6 +1481,7 @@ function emit(ev) { handleEvent(ev); if (net.mode === 'host') broadcast(ev); }
 
 function hostDamage(v, a, head, w) {
   if (!game || game.over || !v.alive) return;
+  if (v !== a && isAlly(v, a)) return; // 味方には当たらない
   const gold = game.gold === a.id;
   let dmg = gold ? 999 : w === 'ar' ? (head ? AR_HEAD : AR_BODY) : head ? DMG_HEAD : DMG_BODY;
   let broke = 0, blocked = 0;
@@ -1428,6 +1490,7 @@ function hostDamage(v, a, head, w) {
     dmg -= ab; v.helmDur -= ab; blocked = 1;
     if (v.helmDur <= 0.5) { v.helmLv = 0; v.helmDur = 0; broke = 1; }
   }
+  if (v.boss && !gold) dmg *= BOSS_TAKE; // ボスはかたい
   dmg = Math.round(dmg);
   v.hp = Math.max(0, v.hp - dmg);
   if (v.isBot && a !== v) v.huntId = a.id;
@@ -1437,7 +1500,7 @@ function hostDamage(v, a, head, w) {
     v.respawnAt = game.time + RESPAWN;
     emit({ t: 'kill', k: a.id, v: v.id, h: head ? 1 : 0, g: gold ? 1 : 0 });
     if (game.gold === v.id) emit({ t: 'gold', id: null });
-    if (a.kills >= WIN_KILLS) hostEnd();
+    if (game.mode === 'ffa' ? a.kills >= WIN_KILLS : teamScore(a.team) >= TEAM_WIN) hostEnd();
   }
 }
 function hostFire(shooter, a, b, tgId, head, w) {
@@ -1522,7 +1585,7 @@ function botThink(b, dt) {
   const P = DIFF[game.diff] || DIFF.normal;
   let tg = null, bd = 1e9;
   for (const o of game.ents) {
-    if (o === b || !o.alive) continue;
+    if (!isEnemy(o, b) || !o.alive) continue;
     const d = Math.hypot(o.x - b.x, o.z - b.z);
     if (d > P.range) continue;
     // 前の方しか見えない（背後は近い時だけ気づく）
@@ -1740,7 +1803,7 @@ function aimTarget(me, cone) {
   const d = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(me.pitch, me.yaw, 0, 'YXZ'));
   let best = null, bestA = cone;
   for (const e of game.ents) {
-    if (e === me || !e.alive || fxOn(e, 'cloak')) continue;
+    if (!isEnemy(e, me) || !e.alive || fxOn(e, 'cloak')) continue;
     const c = new THREE.Vector3(e.rx - me.x, (e.ry || 0) + 1.0 - ((me.y || 0) + EYE), e.rz - me.z), L = c.length();
     if (L > 50 || L < 0.5) continue;
     c.normalize(); const ang = Math.acos(clamp(c.dot(d), -1, 1));
@@ -2034,7 +2097,8 @@ function step(dt) {
     let c = '';
     const dead = !me.alive && !game.over;
     if (dead) c = `やられた…${game.killer ? `\n${game.killer} にやられた` : ''}\n${Math.max(1, Math.ceil(RESPAWN - (game.time - (game.deadAt || 0))))}`;
-    else if (game.time < 2.5) c = 'ミッション開始！\nゴールデンボールを手に入れろ';
+    else if (game.time < 2.5) c = game.mode === 'ffa' ? 'ミッション開始！\nゴールデンボールを手に入れろ'
+      : `ミッション開始！\nあなたは ${me.boss ? '👑 ボス' : TEAM_NAMES[me.team ? 1 : 0]}`;
     $('centerText').textContent = c;
     const ke = dead && game.killerEnt;
     $('killerBox').hidden = !ke;
@@ -2140,7 +2204,7 @@ function hostRoom(retry = 0) {
     conn.on('close', drop); conn.on('error', drop);
   });
 }
-function lobbyMsg() { return { t: 'lobby', code: net.code, diff, members: net.members.map((m) => ({ id: m.id, name: m.name, face: m.face, voice: m.voice })), playing: !!(game && !game.over) }; }
+function lobbyMsg() { return { t: 'lobby', code: net.code, diff, gmode, teams, members: net.members.map((m) => ({ id: m.id, name: m.name, face: m.face, voice: m.voice })), playing: !!(game && !game.over) }; }
 function onHostData(conn, d) {
   if (!d || typeof d !== 'object') return;
   net.seen.set(conn.peer, Date.now());
@@ -2213,6 +2277,8 @@ function onClientData(d) {
     clearTimeout(net.joinTimer);
     net.members = Array.isArray(d.members) ? d.members.slice(0, 4) : []; if (DIFF[d.diff]) diff = d.diff;
     net.playing = !!d.playing;
+    if (MODES[d.gmode]) gmode = d.gmode;
+    if (Array.isArray(d.teams) && d.teams.length === 4) teams = d.teams.map((t) => clamp(num(t), 0, 3));
     if (!game) showLobby(); else renderLobby();
     return;
   }
@@ -2220,10 +2286,11 @@ function onClientData(d) {
     if (DIFF[d.diff]) diff = d.diff;
     const roster = (Array.isArray(d.roster) ? d.roster : []).slice(0, 4).map((r, i) => {
       const m = net.members.find((x) => x.id === r.id);
-      return { id: String(r.id), name: cleanName(r.name, r.bot ? 16 : 10) || 'CPU', bot: !!r.bot, slot: i, face: m ? m.face : null, voice: VOICES[r.voice] ? r.voice : 'm1' };
+      return { id: String(r.id), name: cleanName(r.name, r.bot ? 16 : 10) || 'CPU', bot: !!r.bot, slot: i, face: m ? m.face : null, voice: VOICES[r.voice] ? r.voice : 'm1', team: clamp(num(r.team, i), 0, 3) };
     });
+    if (MODES[d.gmode]) gmode = d.gmode;
     if (!roster.some((r) => r.id === net.myId)) return; // 試合中に入った人は次から
-    startGame({ roster, diff: d.diff, loot: Array.isArray(d.loot) ? d.loot.filter((k) => LOOT_KINDS.some(([kk]) => kk === k)) : settings.loot });
+    startGame({ roster, diff: d.diff, gmode: MODES[d.gmode] ? d.gmode : 'ffa', loot: Array.isArray(d.loot) ? d.loot.filter((k) => LOOT_KINDS.some(([kk]) => kk === k)) : settings.loot });
     return;
   }
   if (d.t === 'tolobby') { endGame(true); showLobby(); return; }
@@ -2235,7 +2302,7 @@ function onClientData(d) {
 //  画面の切りかえ
 // ---------------------------------------------------------------------
 function hideAll() { for (const id of ['title', 'online', 'lobby', 'result']) $(id).hidden = true; }
-function showTitle() { hideAll(); $('title').hidden = false; drawPreview(); renderDiff('diffSeg'); renderLoot('lootChips'); }
+function showTitle() { hideAll(); $('title').hidden = false; drawPreview(); renderDiff('diffSeg'); renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderLoot('lootChips'); }
 function showOnline() { hideAll(); $('online').hidden = false; }
 function inviteUrl() { return `${location.origin}${location.pathname}?room=${net.code}`; }
 function inviteText() { return `「naoの008ゴールデンボール」で勝負しよう！🔫✨\n合言葉：${net.code}\n${inviteUrl()}`; }
@@ -2244,7 +2311,7 @@ function renderLobby() {
   if ($('lobby').hidden) return;
   $('lobbyCode').textContent = net.code;
   $('hostOnly').hidden = !net.isHost;
-  if (net.isHost) { renderDiff('lobbyDiffSeg', () => broadcast(lobbyMsg())); renderLoot('lobbyLootChips'); }
+  if (net.isHost) { renderDiff('lobbyDiffSeg', () => broadcast(lobbyMsg())); renderMode('lobbyModeSeg', () => { broadcast(lobbyMsg()); renderLobby(); }); renderLoot('lobbyLootChips'); }
   const ul = $('memberList'); ul.innerHTML = '';
   for (let i = 0; i < 4; i++) {
     const m = net.members[i], li = document.createElement('li');
@@ -2265,6 +2332,14 @@ function renderLobby() {
       drawFace(c.getContext('2d'), { seed: hashStr('cpu' + i + '|' + CPU_NAMES[i]) }, MAX_HP, false);
       li.append(c, nm);
     }
+    if (gmode !== 'ffa') { // チームの色ボタン（ホストがタップで入れかえ）
+      const t = teams[i] ? 1 : 0, chip = document.createElement('button');
+      chip.className = 'team t' + t; li.classList.add('t' + t);
+      chip.textContent = (gmode === '3v1' && t === 1 ? '👑 ボス' : TEAM_NAMES[t].replace(/チーム/, ''));
+      chip.disabled = !net.isHost;
+      chip.onclick = () => { swapTeam(i); broadcast(lobbyMsg()); renderLobby(); };
+      li.append(chip);
+    }
     ul.appendChild(li);
   }
   const humans = net.members.length;
@@ -2272,21 +2347,31 @@ function renderLobby() {
     ? (humans < 4 ? `あと ${4 - humans} 人さそえます。そろわなくても CPU が入るのでスタートできます` : '4 人そろいました！')
     : net.playing ? '今は試合中です。終わったら次の試合から入れます' : 'ホストがスタートするのを待っています…';
 }
+// 席 i を相手チームのだれかと入れかえる（人数のバランスはそのまま）
+function swapTeam(i) {
+  const other = [0, 1, 2, 3].filter((j) => teams[j] !== teams[i]);
+  if (!other.length) return;
+  const cpu = other.filter((j) => j >= net.members.length);
+  const j = (cpu.length ? cpu : other)[(cpu.length ? cpu : other).length - 1];
+  [teams[i], teams[j]] = [teams[j], teams[i]];
+}
 function hostStart() {
   const roster = [];
   for (let i = 0; i < 4; i++) {
     const m = net.members[i];
     const cpuVoice = ['m1', 'm2', 'm3', 'f1', 'f2', 'f3'][(Math.random() * 6) | 0];
-    if (m) roster.push({ id: m.id, name: m.name, bot: false, slot: i, face: m.face, voice: m.voice || 'm1' });
-    else roster.push({ id: 'cpu' + i, name: CPU_NAMES[i], bot: true, slot: i, face: null, voice: cpuVoice });
+    const team = gmode === 'ffa' ? i : (teams[i] ? 1 : 0);
+    if (m) roster.push({ id: m.id, name: m.name, bot: false, slot: i, face: m.face, voice: m.voice || 'm1', team });
+    else roster.push({ id: 'cpu' + i, name: CPU_NAMES[i], bot: true, slot: i, face: null, voice: cpuVoice, team });
   }
-  if (net.mode === 'host') broadcast({ t: 'start', diff, loot: settings.loot, roster: roster.map(({ id, name, bot, voice }) => ({ id, name, bot, voice })) });
-  startGame({ roster, diff, loot: settings.loot });
+  if (net.mode === 'host') broadcast({ t: 'start', diff, gmode, loot: settings.loot, roster: roster.map(({ id, name, bot, voice, team }) => ({ id, name, bot, voice, team })) });
+  startGame({ roster, diff, gmode, loot: settings.loot });
 }
 function startSolo() {
   leaveAll();
   net.mode = 'solo'; net.isHost = true; net.myId = 'me';
   net.members = [{ id: 'me', name: myName(), face: prof.face, voice: settings.voice }];
+  teams = gmode === '3v1' ? (soloBoss ? [1, 0, 0, 0] : [0, 0, 0, 1]) : defaultTeams(gmode);
   hostStart();
 }
 function showResult() {
@@ -2294,10 +2379,17 @@ function showResult() {
   updateLockHint();
   const list = game.ents.slice().sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
   const top = list[0];
-  $('resultTitle').textContent = top === game.me ? '🏆 あなたの勝ち！' : `🏆 ${top.name} の勝ち！`;
+  if (game.mode === 'ffa') $('resultTitle').textContent = top === game.me ? '🏆 あなたの勝ち！' : `🏆 ${top.name} の勝ち！`;
+  else {
+    const s0 = teamScore(0), s1 = teamScore(1), win = s0 === s1 ? -1 : s0 > s1 ? 0 : 1;
+    const nm = (t) => (game.mode === '3v1' && t === 1 ? '👑 ボス' : TEAM_NAMES[t]);
+    $('resultTitle').textContent = win < 0 ? `🤝 引き分け（${s0} : ${s1}）` : `🏆 ${nm(win)} の勝ち！（${s0} : ${s1}）${game.me && game.me.team === win ? ' やったね！' : ''}`;
+    list.sort((a, b) => (a.team === win ? 0 : 1) - (b.team === win ? 0 : 1) || b.kills - a.kills);
+  }
   const ul = $('resultList'); ul.innerHTML = '';
   list.forEach((e, i) => {
-    const li = document.createElement('li'); if (i === 0) li.className = 'win';
+    const li = document.createElement('li'); if (game.mode === 'ffa' ? i === 0 : e.team === (teamScore(0) === teamScore(1) ? -1 : teamScore(0) > teamScore(1) ? 0 : 1)) li.className = 'win';
+    if (game.mode !== 'ffa') li.style.borderLeft = `5px solid ${e.team ? '#2e6bd1' : '#c0392b'}`;
     const rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = i + 1;
     const c = document.createElement('canvas'); c.width = c.height = FS; c.getContext('2d').drawImage(e.faceCanvas, 0, 0, FS, FS);
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = e.name + (e === game.me ? '（あなた）' : '');
