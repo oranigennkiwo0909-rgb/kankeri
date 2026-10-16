@@ -197,6 +197,14 @@
   .vgrid button { padding: 8px 4px; font-size: 13px; }
 
   .members, .results { grid-template-columns: minmax(0, 1fr); }
+  /* 結果画面の TikTok LIVE の宣伝 */
+  .promo { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border-radius: 14px; text-decoration: none; color: #fff;
+    background: #111; border: 2px solid transparent; background-clip: padding-box; box-shadow: -3px 0 0 #25f4ee, 3px 0 0 #fe2c55; }
+  .promo-live { flex: none; background: #fe2c55; color: #fff; font-weight: 900; font-size: 12px; padding: 3px 7px; border-radius: 6px; animation: livepulse 1.4s ease-in-out infinite; }
+  @keyframes livepulse { 50% { opacity: .55; } }
+  .promo-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.5; }
+  .promo-id { color: #25f4ee; font-weight: bold; }
+  .promo-go { flex: none; font-size: 13px; font-weight: bold; color: #fe2c55; }
   .results { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
   .results li { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
   .results li.win { background: rgba(245,197,66,.15); border-color: var(--gold); }
@@ -343,6 +351,11 @@
   <div class="card">
     <h2 id="resultTitle">結果</h2>
     <ul class="results" id="resultList"></ul>
+    <a class="promo" href="https://www.tiktok.com/@hitoyasumi.takarazuka" target="_blank" rel="noopener">
+      <span class="promo-live">LIVE</span>
+      <span class="promo-text"><b>このゲームを作った人が TikTok LIVE 配信中！</b><br>フォロー＆いいね、よろしくね 🙏❤️<br><span class="promo-id">@hitoyasumi.takarazuka</span></span>
+      <span class="promo-go">見に行く ▶</span>
+    </a>
     <button class="primary" id="againBtn">もう一回</button>
     <button class="secondary" id="toLobbyBtn">作戦会議室へ</button>
     <button class="secondary" id="toTitleBtn">タイトルへ</button>
