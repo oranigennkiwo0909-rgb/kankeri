@@ -97,6 +97,9 @@
   #hpbar { height: 12px; border-radius: 6px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.3); overflow: hidden; margin-top: 4px; }
   #hpfill { height: 100%; width: 100%; background: linear-gradient(90deg, #e0402a, #f5c542 50%, #6fd36f); background-size: 120px 100%; transition: width .15s; }
   #hptext { font-size: 12px; color: #ddd; text-shadow: 0 1px 2px #000; margin-top: 2px; }
+  #helmRow { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 3px; text-shadow: 0 1px 2px #000; white-space: nowrap; }
+  #helmbar { flex: 1; height: 6px; border-radius: 3px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.25); overflow: hidden; }
+  #helmfill { height: 100%; width: 0; background: #8fb3ff; }
   #board { position: absolute; top: 10px; right: max(10px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
   #timer { font-size: 18px; font-weight: bold; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; text-align: right; }
   .sc { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.45); border-radius: 8px; padding: 2px 8px 2px 2px; font-size: 13px; }
@@ -192,6 +195,8 @@
         <li>4人で撃ち合い！先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
         <li>まん中の台にある <b>ゴールデンボール</b> を取ると、銃が金色になって <b>一発でたおせる</b>！やられると台にもどります。</li>
         <li>白い箱（救急箱）で体力が回復。顔のキズも少しなおります。</li>
+        <li>🎁 宝箱に近づくと開いて、アイテムが出てきます：<b>アサルトライフル</b>（40発の連射・弾がなくなったら捨てる）、<b>ヘルメット</b>、救急箱。</li>
+        <li>⛑ ヘルメットは頭へのダメージを減らします。Lv1：30%、Lv2：45%、Lv3：60% カット。ダメージを受けるとすり減って、こわれます。</li>
         <li>頭に当てると 2 倍ダメージ。</li>
         <li>撃たれると、撃ってきた方向が赤い矢印で出ます。</li>
         <li>「⚙ 設定」で視点の感度と、エイムお助け（照準を近くに合わせると吸いつく）のオン・オフを変えられます。</li>
@@ -274,7 +279,7 @@
   <div id="cross"></div>
   <div id="me-box">
     <canvas id="me-face" width="128" height="128"></canvas>
-    <div id="hpwrap"><div id="hpname"></div><div id="hpbar"><div id="hpfill"></div></div><div id="hptext"></div></div>
+    <div id="hpwrap"><div id="hpname"></div><div id="hpbar"><div id="hpfill"></div></div><div id="hptext"></div><div id="helmRow"><span id="helmTxt">⛑ なし</span><div id="helmbar"><div id="helmfill"></div></div></div></div>
   </div>
   <div id="goldmsg"></div>
   <div id="board"><div id="timer"></div></div>
@@ -322,9 +327,15 @@ const isTouch = matchMedia('(pointer: coarse)').matches || ('ontouchstart' in wi
 //  ルール
 // ---------------------------------------------------------------------
 const MAX_HP = 100, WIN_KILLS = 10, MATCH_TIME = 300, RESPAWN = 3;
-const EYE = 1.6, RADIUS = 0.4, SPEED = 5.4;
+const EYE = 1.38, RADIUS = 0.4, SPEED = 5.4;
+const HEAD_Y = 1.28, HEAD_R = 0.42, BODY_TOP = 0.86; // 2頭身：頭が体と同じくらい大きい
 const MAG = 8, FIRE_GAP = 0.26, RELOAD = 1.2, GOLD_RELOAD = 1.0;
-const DMG_BODY = 25, DMG_HEAD = 50;
+const DMG_BODY = 25, DMG_HEAD = 40;
+const AR_MAG = 40, AR_GAP = 0.1, AR_BODY = 17, AR_HEAD = 28; // アサルトライフル（使い捨て）
+const HELM = [null,
+  { name: 'Lv1', red: 0.3, dur: 80, color: '#6b7046' },
+  { name: 'Lv2', red: 0.45, dur: 150, color: '#3b4a3a' },
+  { name: 'Lv3', red: 0.6, dur: 230, color: '#1e2024' }];
 const DIFF = {
   easy:   { label: 'かんたん',   react: 1.0,  err: 0.11,  gap: 0.95, range: 22, turn: 2.2, speed: 3.0 },
   normal: { label: 'ふつう',     react: 0.6,  err: 0.055, gap: 0.62, range: 32, turn: 3.6, speed: 4.0 },
@@ -348,12 +359,13 @@ for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
   WALLS.push([sx * 17, sz * 9, 1.2, 6, 3.2, 'wall']);         // L 字のたて
   WALLS.push([sx * 7, sz * 7, 1.6, 1.6, 6, 'pillar']);        // 柱
   WALLS.push([sx * 23, sz * 23, 2.6, 2.6, 2.6, 'crate']);     // 大きな木箱
-  WALLS.push([sx * 24, sz * 4, 2.2, 2.2, 1.3, 'crate']);      // 低い木箱（上から撃てる）
-  WALLS.push([sz * 4, sx * 25, 2.2, 2.2, 1.3, 'crate']);
+  WALLS.push([sx * 24, sz * 4, 2.2, 2.2, 1.0, 'crate']);      // 低い木箱（上から撃てる）
+  WALLS.push([sz * 4, sx * 25, 2.2, 2.2, 1.0, 'crate']);
 }
 const BOXES = WALLS.map(([cx, cz, w, d, h, kind]) => ({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, y0: 0, y1: h, kind, cx, cz, w, d, h }));
 const SPAWNS = [[27, 27], [-27, 27], [27, -27], [-27, -27], [0, 16], [0, -16], [16, 0], [-16, 0]];
 const PACKS = [[26.5, 0], [-26.5, 0], [0, 27], [0, -27]];
+const CHESTS = [[12, 0], [-12, 0], [0, 9.5], [0, -9.5], [27, -14], [-27, 14]];
 
 // 円（プレイヤー）を壁から押し出す
 function collide(p) {
@@ -392,27 +404,27 @@ function rayWorld(o, d, maxD) {
   if (d.y < -1e-6) { const t = -o.y / d.y; if (t < best) best = t; }
   return best;
 }
-function entBoxes(e, useRender) {
-  const x = useRender ? e.rx : e.x, z = useRender ? e.rz : e.z, hs = 0.22 * e.swell;
-  return [
-    { x0: x - 0.3, x1: x + 0.3, y0: 0, y1: 1.45, z0: z - 0.3, z1: z + 0.3, head: false },
-    { x0: x - hs, x1: x + hs, y0: 1.45, y1: 1.45 + 0.44 * e.swell, z0: z - hs, z1: z + hs, head: true },
-  ];
+function raySphere(o, d, cx, cy, cz, r) {
+  const ox = o.x - cx, oy = o.y - cy, oz = o.z - cz, b = ox * d.x + oy * d.y + oz * d.z, c = ox * ox + oy * oy + oz * oz - r * r, h = b * b - c;
+  if (h < 0) return Infinity;
+  const t = -b - Math.sqrt(h);
+  return t >= 0 ? t : -b + Math.sqrt(h) >= 0 ? 0 : Infinity;
 }
-// 撃った弾の行き先。{dist, ent, head}
+// 撃った弾の行き先。{dist, ent, head}  体は箱、大きな頭は球で判定
 function rayShot(o, d, shooter, useRender) {
   let best = rayWorld(o, d, 120), ent = null, head = false;
   for (const e of game.ents) {
     if (e === shooter || !e.alive) continue;
-    for (const b of entBoxes(e, useRender)) {
-      const t = rayBox(o, d, b);
-      if (t < best) { best = t; ent = e; head = b.head; }
-    }
+    const x = useRender ? e.rx : e.x, z = useRender ? e.rz : e.z;
+    const tb = rayBox(o, d, { x0: x - 0.27, x1: x + 0.27, y0: 0, y1: BODY_TOP, z0: z - 0.27, z1: z + 0.27 });
+    if (tb < best) { best = tb; ent = e; head = false; }
+    const th = raySphere(o, d, x, HEAD_Y, z, HEAD_R * e.swell * (e.helmLv ? 1.08 : 1));
+    if (th < best) { best = th; ent = e; head = true; }
   }
   return { dist: best, ent, head };
 }
 function canSee(a, b) {
-  const o = { x: a.x, y: EYE, z: a.z }, dx = b.x - a.x, dy = 1.5 - EYE, dz = b.z - a.z;
+  const o = { x: a.x, y: EYE, z: a.z }, dx = b.x - a.x, dy = 1.1 - EYE, dz = b.z - a.z;
   const L = Math.hypot(dx, dy, dz) || 1, d = { x: dx / L, y: dy / L, z: dz / L };
   return rayWorld(o, d, L) >= L - 0.05;
 }
@@ -613,14 +625,14 @@ function setFaceImgFromData(data) {
 }
 function makeCrop() {
   if (!srcImg) return;
-  const c = document.createElement('canvas'); c.width = c.height = FS;
+  const c = document.createElement('canvas'); c.width = c.height = FS * 2; // 256px で保存（大きな頭でもきれいに）
   const cx = c.getContext('2d');
   const s = Math.min(srcImg.naturalWidth, srcImg.naturalHeight) / crop.zoom;
   const sx = clamp((srcImg.naturalWidth - s) / 2 + crop.ox, 0, srcImg.naturalWidth - s);
   const sy = clamp((srcImg.naturalHeight - s) / 2 + crop.oy, 0, srcImg.naturalHeight - s);
   crop.ox = sx - (srcImg.naturalWidth - s) / 2; crop.oy = sy - (srcImg.naturalHeight - s) / 2;
-  cx.drawImage(srcImg, sx, sy, s, s, 0, 0, FS, FS);
-  const data = c.toDataURL('image/jpeg', 0.82);
+  cx.drawImage(srcImg, sx, sy, s, s, 0, 0, FS * 2, FS * 2);
+  const data = c.toDataURL('image/jpeg', 0.8);
   store.set('gb_face', data);
   prof.faceImg = c; prof.face = data; // canvas もそのまま描ける
   drawPreview();
@@ -660,7 +672,7 @@ const myName = () => cleanName($('nameInput').value) || 'ななしのスパイ';
 
 // 設定（端末ごとに保存）
 const settings = { sens: clamp(Number(store.get('gb_sens')) || 1, 0.2, 3), assist: store.get('gb_assist') !== '0',
-  bgm: store.get('gb_bgm') == null ? 35 : clamp(Number(store.get('gb_bgm')) || 0, 0, 100) };
+  bgm: store.get('gb_bgm') == null ? 40 : clamp(Number(store.get('gb_bgm')) || 0, 0, 100) };
 function renderSettings() {
   $('sensRange').value = Math.round(settings.sens * 100); $('sensVal').textContent = settings.sens.toFixed(2).replace(/0$/, '');
   $('assistOn').className = settings.assist ? 'on' : ''; $('assistOff').className = settings.assist ? '' : 'on';
@@ -703,14 +715,14 @@ function buildSounds() {
   const conv = AC.createConvolver(); conv.buffer = ir; revIn = AC.createGain(); revIn.connect(conv);
   const rg = AC.createGain(); rg.gain.value = 0.5; conv.connect(rg); rg.connect(master);
   // 拳銃：パンッ（破裂）＋ドン（胴鳴り）＋低い衝撃＋ザーッ（尾）
-  const pistol = (gold) => makeBuf(0.9, (d, sr) => {
+  const pistol = (gold, rifle) => makeBuf(0.9, (d, sr) => {
     let lp1 = 0, lp2 = 0, ph = 0;
     for (let i = 0; i < d.length; i++) {
       const t = i / sr, w = Math.random() * 2 - 1;
       lp1 += (w - lp1) * 0.18; lp2 += (w - lp2) * 0.04;
-      const crack = (w - lp1) * Math.exp(-t / 0.006) * 1.4;
-      const body = lp1 * Math.exp(-t / 0.045) * 2.2;
-      ph += 2 * Math.PI * (45 + 95 * Math.exp(-t / 0.03)) / sr;
+      const crack = (w - lp1) * Math.exp(-t / (rifle ? 0.009 : 0.006)) * (rifle ? 1.9 : 1.4);
+      const body = lp1 * Math.exp(-t / (rifle ? 0.035 : 0.045)) * 2.2;
+      ph += 2 * Math.PI * ((rifle ? 38 : 45) + 95 * Math.exp(-t / 0.03)) / sr;
       const thump = Math.sin(ph) * Math.exp(-t / 0.09) * 0.9;
       const tail = lp2 * Math.exp(-t / 0.3) * 1.6;
       let v = crack + body + thump + tail;
@@ -718,7 +730,7 @@ function buildSounds() {
       d[i] = Math.tanh(v * 1.6) * 0.9;
     }
   });
-  sounds.shot = pistol(false); sounds.gold = pistol(true);
+  sounds.shot = pistol(false); sounds.gold = pistol(true); sounds.rifle = pistol(false, true);
   // 金属のカチャッ（マガジン・スライド）
   sounds.clack = makeBuf(0.12, (d, sr) => { let lp = 0; for (let i = 0; i < d.length; i++) { const t = i / sr, w = Math.random() * 2 - 1; lp += (w - lp) * 0.5;
     d[i] = (w - lp) * 0.8 * Math.exp(-t / 0.008) + Math.sin(2 * Math.PI * 1800 * t) * 0.4 * Math.exp(-t / 0.02) + Math.sin(2 * Math.PI * 3100 * t) * 0.25 * Math.exp(-t / 0.015); } });
@@ -752,12 +764,12 @@ function playBuf(buf, vol, { lp = 20000, rev = 0.15, delay = 0, rate = 1 } = {})
   s.start(ac.currentTime + delay);
 }
 // 銃声：遠いほど小さく、こもって、響きが多くなる
-function gunSound(gold, x, z, own) {
+function gunSound(gold, x, z, own, rifle) {
   if (!AC) return;
   const dist = own ? 0 : game && game.me ? Math.hypot(x - game.me.rx, z - game.me.rz) : 10;
   const vol = own ? 0.85 : 0.75 / (1 + dist * 0.09);
-  playBuf(gold ? sounds.gold : sounds.shot, vol, { lp: own ? 16000 : clamp(14000 / (1 + dist * 0.12), 900, 14000), rev: own ? 0.35 : 0.5 + Math.min(1, dist / 30), rate: 0.94 + Math.random() * 0.12 });
-  if (own) playBuf(sounds.shell, 0.3, { delay: 0.35 + Math.random() * 0.1, rev: 0.1, rate: 0.9 + Math.random() * 0.2 });
+  playBuf(gold ? sounds.gold : rifle ? sounds.rifle : sounds.shot, vol * (rifle ? 0.85 : 1), { lp: own ? 16000 : clamp(14000 / (1 + dist * 0.12), 900, 14000), rev: own ? 0.35 : 0.5 + Math.min(1, dist / 30), rate: 0.94 + Math.random() * 0.12 });
+  if (own && (!rifle || Math.random() < 0.35)) playBuf(sounds.shell, 0.3, { delay: 0.35 + Math.random() * 0.1, rev: 0.1, rate: 0.9 + Math.random() * 0.2 });
 }
 function sfx(type, vol = 1) {
   const ac = AC; if (!ac || vol < 0.03) return;
@@ -775,76 +787,86 @@ function sfx(type, vol = 1) {
   else if (type === 'pickup') { osc('sine', 660, 990, 0.12, 0.35); setTimeout(() => { if (AC) sfx('ding', vol); }, 110); }
   else if (type === 'ding') { osc('sine', 1320, 1320, 0.25, 0.3); }
   else if (type === 'kill') { osc('square', 520, 780, 0.15, 0.2); }
+  else if (type === 'chest') { osc('sawtooth', 140, 90, 0.35, 0.15); setTimeout(() => { if (AC) { sfx('ding', vol); setTimeout(() => AC && sfx('pickup', vol * 0.6), 120); } }, 250); }
 }
 const volAt = (x, z) => game && game.me ? 1 / (1 + Math.hypot(x - game.me.rx, z - game.me.rz) * 0.12) : 1;
 
 // ---------------------------------------------------------------------
-//  BGM：スパイ映画っぽいオリジナル曲（ウォーキングベース＋ブラス＋サーフギター）
+//  BGM：スパイアクション映画っぽいオリジナル曲（重いドラム＋ひずんだベース＋ブラス＋ストリングス）
 // ---------------------------------------------------------------------
 const bgm = { playing: false, next: 0, step: 0, timer: null };
-const BPM = 132, STEP = 60 / BPM / 2;
+const BPM = 150, STEP = 60 / BPM / 4; // 16分音符
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
-const BASS = [40, 0, 40, 43, 45, 0, 43, 40, 40, 0, 40, 43, 46, 45, 43, 40, 36, 0, 36, 40, 43, 0, 40, 36, 35, 0, 35, 39, 42, 0, 39, 35];
-const LEAD = [64, 0, 67, 0, 71, 0, 69, 67, 64, 0, 0, 0, 62, 64, 0, 0, 67, 0, 69, 0, 72, 0, 71, 69, 71, 0, 0, 0, 66, 0, 71, 0];
+const CHORDS = [[40, 3], [36, 4], [38, 4], [35, 4]]; // Em → C → D → B（根音, 3度）
+let distCurve = null;
 function bgmLevel() { return (settings.bgm / 100) * 0.32; }
 function bgmStart() {
   if (!AC || bgm.playing || settings.bgm <= 0) return;
   bgm.playing = true; bgm.next = AC.currentTime + 0.15; bgm.step = 0;
-  bgm.timer = setInterval(bgmTick, 40);
+  bgm.timer = setInterval(bgmTick, 30);
 }
 function bgmStop() { bgm.playing = false; clearInterval(bgm.timer); }
 function bgmTick() {
   if (!AC || !bgm.playing) return;
   if (bgm.next < AC.currentTime - 0.1) bgm.next = AC.currentTime + 0.05; // 裏に回っていた時は追いつかせない
-  while (bgm.next < AC.currentTime + 0.3) { bgmStep(bgm.step, bgm.next); bgm.step++; bgm.next += STEP; }
+  while (bgm.next < AC.currentTime + 0.25) { bgmStep(bgm.step, bgm.next); bgm.step++; bgm.next += STEP; }
 }
 function bgmStep(n, t) {
-  const ac = AC, i = n % 32, loop = Math.floor(n / 32), beat = i % 8;
-  const envGain = (a, atk, dur, dest = bgmBus) => { const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a, t + atk); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); g.connect(dest); return g; };
-  const noiseHit = (type, freq, q, a, dur) => { const s = ac.createBufferSource(); s.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; s.connect(f); f.connect(envGain(a, 0.002, dur)); s.start(t, Math.random() * 0.3); s.stop(t + dur + 0.02); };
-  // ドラム（ブラシっぽく）
-  noiseHit('highpass', 7000, 0.7, beat % 2 ? 0.22 : 0.1, 0.035);
-  if (beat === 2 || beat === 6) noiseHit('bandpass', 1800, 0.6, 0.3, 0.14);
-  if (beat === 0 || beat === 4) { const o = ac.createOscillator(); o.frequency.setValueAtTime(100, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12); o.connect(envGain(0.6, 0.003, 0.15)); o.start(t); o.stop(t + 0.17); }
-  // ウッドベース
-  if (BASS[i]) {
-    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 650; f.connect(envGain(0.55, 0.006, 0.3));
-    for (const [type, a] of [['triangle', 1], ['sawtooth', 0.3]]) { const o = ac.createOscillator(); o.type = type; o.frequency.value = mtof(BASS[i]); const g = ac.createGain(); g.gain.value = a; o.connect(g); g.connect(f); o.start(t); o.stop(t + 0.32); }
-  }
-  // ブラスの「ジャッ」
-  const stab = (notes, a, dur) => {
-    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(3000, t + 0.04); f.frequency.exponentialRampToValueAtTime(700, t + dur);
-    const g = envGain(a, 0.015, dur); f.connect(g); const r = ac.createGain(); r.gain.value = 0.3; g.connect(r); r.connect(revIn);
-    for (const m of notes) for (const det of [-7, 7]) { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(m); o.detune.value = det; o.connect(f); o.start(t); o.stop(t + dur + 0.05); }
+  const ac = AC, i = n % 64, loop = Math.floor(n / 64), bar = i >> 4, s16 = i % 16, sec = loop % 4;
+  const [root, third] = CHORDS[bar];
+  if (!distCurve) { distCurve = new Float32Array(512); for (let k = 0; k < 512; k++) distCurve[k] = Math.tanh((k / 256 - 1) * 5); }
+  const envGain = (a, atk, dur, rev = 0) => {
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a, t + atk); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); g.connect(bgmBus);
+    if (rev) { const r = ac.createGain(); r.gain.value = rev; g.connect(r); r.connect(revIn); }
+    return g;
   };
-  if (i === 0 && loop % 2 === 0) stab([52, 55, 59, 63], 0.13, 0.45);   // Em(maj7)
-  if (i === 24 && loop % 2 === 0) stab([47, 51, 54, 57], 0.12, 0.4);   // B7
-  if (i === 31 && loop % 4 === 3) stab([52, 55, 59, 63, 66], 0.15, 1.4);
-  // サーフギター（2回に1回メロディ）
-  if (loop % 2 === 1 && LEAD[i]) {
-    const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(LEAD[i]);
-    const lfo = ac.createOscillator(); lfo.frequency.value = 6; const lg = ac.createGain(); lg.gain.value = 12; lfo.connect(lg); lg.connect(o.detune);
-    const sh = ac.createWaveShaper(); const curve = new Float32Array(256); for (let k = 0; k < 256; k++) curve[k] = Math.tanh((k / 128 - 1) * 3); sh.curve = curve;
-    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2400;
-    const g = envGain(0.1, 0.005, 0.45); const r = ac.createGain(); r.gain.value = 0.5; g.connect(r); r.connect(revIn);
-    o.connect(sh); sh.connect(f); f.connect(g); o.start(t); lfo.start(t); o.stop(t + 0.5); lfo.stop(t + 0.5);
+  const noiseHit = (type, freq, q, a, dur, rev) => { const src = ac.createBufferSource(); src.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; src.connect(f); f.connect(envGain(a, 0.002, dur, rev)); src.start(t, Math.random() * 0.2, dur + 0.05); };
+  const tone = (type, f0, f1, a, dur, rev) => { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); o.connect(envGain(a, 0.003, dur, rev)); o.start(t); o.stop(t + dur + 0.02); };
+  const synth = (m, type, cutoff, a, atk, dur, detunes = [0], dist = false, rev = 0) => {
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff; f.connect(envGain(a, atk, dur, rev));
+    let input = f; if (dist) { const sh = ac.createWaveShaper(); sh.curve = distCurve; sh.connect(f); input = sh; }
+    for (const dt of detunes) { const o = ac.createOscillator(); o.type = type; o.frequency.value = mtof(m); o.detune.value = dt; o.connect(input); o.start(t); o.stop(t + dur + 0.05); }
+  };
+  // ── ドラム（重いキック・響くスネア）
+  if ([0, 6, 8, 11].includes(s16) || (sec === 3 && bar === 3 && s16 >= 12)) { tone('sine', 150, 40, 1.0, 0.3); noiseHit('lowpass', 3000, 0.5, 0.2, 0.015); }
+  if (s16 === 4 || s16 === 12) { noiseHit('bandpass', 1700, 0.5, 0.75, 0.2, 0.35); tone('triangle', 230, 150, 0.35, 0.1); }
+  if (sec === 3 && bar === 3 && s16 >= 8 && s16 % 2 === 0) { tone('sine', 220 - s16 * 8, 90, 0.6, 0.25, 0.2); } // タムのフィル
+  if (s16 % 2 === 0) noiseHit('highpass', 8000, 0.7, s16 % 4 === 2 ? 0.2 : 0.12, 0.04);
+  else if (sec >= 1) noiseHit('highpass', 9500, 0.7, 0.06, 0.025);
+  if (i === 0) { noiseHit('highpass', 4000, 0.4, 0.35, 1.8, 0.4); }                 // シンバル
+  if (i === 0 && sec === 0) tone('sine', 75, 38, 1.0, 1.5, 0.3);                     // ドーンという地鳴り
+  // ── ひずんだベース（8分でゴリゴリ）
+  if (s16 % 2 === 0) { const pat = [0, 0, 12, 0, 0, 12, 10, 7]; synth(root + pat[s16 / 2], 'sawtooth', 900, 0.32, 0.005, 0.2, [0, -8], true); }
+  // ── ストリングスの刻み（緊張感）
+  if (sec >= 1) { const arp = [0, third, 7, 12]; synth(root + 24 + arp[s16 % 4], 'sawtooth', 2600, 0.05, 0.01, 0.12, [-6, 6], false, 0.2); }
+  // ── ブラスの「ジャーン！」
+  if (sec >= 2 && (s16 === 0 || s16 === 10 || (bar === 3 && s16 === 14))) {
+    const voicing = [root + 12, root + 12 + third, root + 19, root + 24];
+    for (const m of voicing) synth(m, 'sawtooth', s16 === 0 ? 3200 : 2400, 0.07, 0.02, s16 === 0 ? 0.6 : 0.28, [-9, 0, 9], false, 0.35);
   }
+  // ── ひずみギターのパワーコード
+  if (sec >= 2 && s16 % 2 === 0 && s16 !== 10) { synth(root + 12, 'sawtooth', 1800, s16 === 0 ? 0.09 : 0.06, 0.004, s16 === 0 ? 0.35 : 0.12, [0, 700], true); }
+  // ── 区切りのジャン！
+  if (i === 63 && sec === 3) { for (const m of [52, 59, 64, 67]) synth(m, 'sawtooth', 3000, 0.08, 0.01, 1.2, [-10, 10], false, 0.5); }
 }
-
 // ---------------------------------------------------------------------
 //  3D の世界
 // ---------------------------------------------------------------------
 const canvas = $('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#1b1f1a');
 scene.fog = new THREE.Fog('#1b1f1a', 25, 75);
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
-scene.add(new THREE.HemisphereLight('#e8f0ff', '#3a3324', 0.75));
-const sun = new THREE.DirectionalLight('#fff3dc', 0.65); sun.position.set(10, 30, 14); scene.add(sun);
+scene.add(new THREE.HemisphereLight('#e8f0ff', '#3a3324', 0.62));
+const sun = new THREE.DirectionalLight('#fff3dc', 0.85); sun.position.set(12, 30, 10); scene.add(sun);
+sun.castShadow = true; sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+Object.assign(sun.shadow.camera, { left: -33, right: 33, top: 33, bottom: -33, near: 1, far: 80 }); sun.shadow.bias = -0.0008;
+const fill = new THREE.DirectionalLight('#cfe0ff', 0.25); fill.position.set(-14, 10, -12); scene.add(fill);
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
@@ -859,7 +881,7 @@ const floorTex = canvasTex(128, 128, (c, w) => {
   for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`; c.fillRect(Math.random() * 128, Math.random() * 128, 2, 2); }
 }, [30, 30]);
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({ map: floorTex }));
-floor.rotation.x = -Math.PI / 2; scene.add(floor);
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 const wallBase = canvasTex(128, 128, (c) => {
   c.fillStyle = '#7d8270'; c.fillRect(0, 0, 128, 128);
   c.fillStyle = '#6e7362'; c.fillRect(0, 88, 128, 40);
@@ -879,7 +901,7 @@ for (const b of BOXES) {
   else if (b.kind === 'pillar') { mat = new THREE.MeshLambertMaterial({ color: '#5f6656' }); }
   else { const t = wallBase.clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, Math.round(Math.max(b.w, b.d) / 3)), 1); mat = new THREE.MeshLambertMaterial({ map: t }); }
   const m = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), mat);
-  m.position.set(b.cx, b.h / 2, b.cz); scene.add(m);
+  m.position.set(b.cx, b.h / 2, b.cz); m.castShadow = m.receiveShadow = true; scene.add(m);
 }
 // 天井の明かり（雰囲気）
 for (const [x, z] of [[0, 0], [15, 15], [-15, 15], [15, -15], [-15, -15]]) {
@@ -893,6 +915,78 @@ const goldLight = new THREE.PointLight('#ffcc44', 1.2, 8); goldLight.position.se
 const packTex = canvasTex(64, 64, (c) => { c.fillStyle = '#f4f4f0'; c.fillRect(0, 0, 64, 64); c.fillStyle = '#d82020'; c.fillRect(26, 10, 12, 44); c.fillRect(10, 26, 44, 12); });
 const packMeshes = PACKS.map(([x, z]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), new THREE.MeshLambertMaterial({ map: packTex })); m.position.set(x, 0.5, z); scene.add(m); return m; });
 
+// 宝箱
+const chestTex = canvasTex(64, 64, (c) => {
+  c.fillStyle = '#7a4a1e'; c.fillRect(0, 0, 64, 64);
+  c.strokeStyle = 'rgba(0,0,0,.25)'; for (let y = 8; y < 64; y += 10) { c.beginPath(); c.moveTo(0, y); c.lineTo(64, y); c.stroke(); }
+  c.fillStyle = '#e0b030'; c.fillRect(0, 0, 64, 6); c.fillRect(0, 58, 64, 6); c.fillRect(8, 0, 6, 64); c.fillRect(50, 0, 6, 64);
+});
+const chestMeshes = CHESTS.map(([x, z]) => {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = Math.atan2(-x, -z); // まん中を向く
+  const mat = new THREE.MeshStandardMaterial({ map: chestTex, roughness: 0.7 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.48, 0.6), mat); base.position.y = 0.24; base.castShadow = true; g.add(base);
+  const lid = new THREE.Group(); lid.position.set(0, 0.48, -0.3); g.add(lid);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.9, 16, 1, false, 0, Math.PI), mat); top.rotation.z = Math.PI / 2; top.position.z = 0.3; top.castShadow = true; lid.add(top);
+  const lock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.04), new THREE.MeshStandardMaterial({ color: '#ffd24a', metalness: 0.8, roughness: 0.3 })); lock.position.set(0, 0.42, 0.31); g.add(lock);
+  const glow = new THREE.PointLight('#ffcc55', 0.6, 3); glow.position.y = 0.9; g.add(glow);
+  scene.add(g); return { g, lid, lock, glow, ang: 0 };
+});
+function makeRifle(mat) {
+  const g = new THREE.Group(), m = mat || new THREE.MeshStandardMaterial({ color: '#2a2c2f', metalness: 0.55, roughness: 0.45 });
+  const wood = new THREE.MeshStandardMaterial({ color: '#5a3a1e', roughness: 0.7 });
+  const box = (w, h, d, x, y, z, mm = m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mm); b.position.set(x, y, z); b.castShadow = true; g.add(b); return b; };
+  box(0.07, 0.1, 0.42, 0, 0, 0);                       // 本体
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 8), m); bar.rotation.x = Math.PI / 2; bar.position.set(0, 0.02, -0.35); g.add(bar);
+  box(0.06, 0.06, 0.2, 0, -0.005, -0.28, wood);        // ハンドガード
+  const mag = box(0.05, 0.16, 0.07, 0, -0.12, -0.04); mag.rotation.x = 0.25; // 曲がったマガジン
+  box(0.05, 0.11, 0.05, 0, -0.08, 0.1, wood);         // グリップ
+  box(0.06, 0.09, 0.22, 0, -0.02, 0.3, wood);         // ストック
+  box(0.02, 0.04, 0.02, 0, 0.07, -0.18);               // 照星
+  return g;
+}
+function makeHelmet(lv) {
+  const g = new THREE.Group(), H = HELM[lv];
+  const mat = new THREE.MeshStandardMaterial({ color: H.color, roughness: lv === 3 ? 0.35 : 0.75, metalness: lv === 3 ? 0.45 : 0.1 });
+  const r = HEAD_R * 1.1, th = Math.PI * 0.38;
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 14, 0, Math.PI * 2, 0, th), mat); shell.castShadow = true; g.add(shell);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(r * Math.sin(th), 0.025, 8, 36), mat); rim.rotation.x = Math.PI / 2; rim.position.y = r * Math.cos(th); g.add(rim);
+  if (lv >= 2) for (const sx of [-1, 1]) { const ear = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.22), mat); ear.position.set(sx * r * 0.98, r * Math.cos(th) - 0.06, -0.02); g.add(ear); }
+  if (lv === 3) { // ゴーグル
+    const band = new THREE.Mesh(new THREE.TorusGeometry(r * 1.0, 0.02, 6, 30, Math.PI * 0.7), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.6 }));
+    band.rotation.set(Math.PI / 2 - 0.35, 0, Math.PI * 0.15); band.position.y = r * 0.55; g.add(band);
+    for (const sx of [-1, 1]) { const lens = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8), new THREE.MeshStandardMaterial({ color: '#3fa9ff', metalness: 0.9, roughness: 0.1 })); lens.scale.z = 0.5; lens.position.set(sx * 0.11, r * 0.62, r * 0.78); g.add(lens); }
+  }
+  if (lv === 1) { const stripe = new THREE.Mesh(new THREE.TorusGeometry(r * 0.75, 0.012, 6, 30), new THREE.MeshStandardMaterial({ color: '#c9b46a' })); stripe.rotation.x = Math.PI / 2; stripe.position.y = r * 0.66; g.add(stripe); }
+  return g;
+}
+const itemMeshes = new Map();
+function makeItemMesh(k) {
+  const g = new THREE.Group();
+  if (k === 'ar') { const r = makeRifle(); r.scale.setScalar(1.6); r.rotation.y = Math.PI / 2; g.add(r); }
+  else if (k[0] === 'h') { const h = makeHelmet(Number(k[1])); h.scale.setScalar(1.1); g.add(h); }
+  else { const m = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.5), new THREE.MeshLambertMaterial({ map: packTex })); g.add(m); }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 6, 24), new THREE.MeshBasicMaterial({ color: k === 'ar' ? '#ff9a3a' : k[0] === 'h' ? '#7fb0ff' : '#ff6060' }));
+  ring.rotation.x = Math.PI / 2; ring.position.y = -0.45; g.add(ring);
+  scene.add(g); return g;
+}
+function syncWorldItems(dt, now) {
+  const list = game ? game.items : [];
+  const seen = new Set();
+  for (const it of list) {
+    seen.add(it.iid);
+    let m = itemMeshes.get(it.iid);
+    if (!m) { m = makeItemMesh(it.k); itemMeshes.set(it.iid, m); m.userData.born = now; }
+    const pop = Math.min(1, (now - m.userData.born) / 500);
+    m.position.set(it.x, 0.55 + pop * 0.6 + Math.sin(now / 300 + it.iid) * 0.05, it.z); m.rotation.y += dt * 1.8; m.scale.setScalar(0.3 + pop * 0.7);
+  }
+  for (const [iid, m] of itemMeshes) if (!seen.has(iid)) { scene.remove(m); itemMeshes.delete(iid); }
+  chestMeshes.forEach((c, i) => {
+    const open = game && game.chests[i] && game.chests[i].open;
+    c.ang += ((open ? -1.9 : 0) - c.ang) * Math.min(1, dt * 6); c.lid.rotation.x = c.ang;
+    c.glow.intensity = open ? 0 : 0.6 + Math.sin(now / 250) * 0.2; c.lock.visible = !open;
+  });
+}
+
 // 自分の手元の銃
 const viewGun = new THREE.Group();
 const gunMat = new THREE.MeshStandardMaterial({ color: '#222428', metalness: 0.6, roughness: 0.45 });
@@ -900,6 +994,9 @@ const gunMat = new THREE.MeshStandardMaterial({ color: '#222428', metalness: 0.6
   const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.07), gunMat); grip.position.set(0, -0.09, 0.03); grip.rotation.x = 0.25; viewGun.add(grip);
   const hand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 0.12), new THREE.MeshLambertMaterial({ color: '#e0b48c' })); hand.position.set(0, -0.12, 0.08); viewGun.add(hand); }
 viewGun.scale.setScalar(0.6); viewGun.position.set(0.16, -0.14, -0.4); camera.add(viewGun);
+const viewRifle = makeRifle(); viewRifle.scale.setScalar(0.62); camera.add(viewRifle); viewRifle.visible = false;
+{ const hand = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshLambertMaterial({ color: '#e0b48c' })); hand.position.set(0, -0.09, 0.1); viewRifle.add(hand);
+  const hand2 = hand.clone(); hand2.position.set(-0.02, -0.06, -0.26); viewRifle.add(hand2); }
 const muzzle = new THREE.PointLight('#ffd27a', 0, 6); muzzle.position.set(0.16, -0.12, -0.7); camera.add(muzzle);
 const flashMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0, depthWrite: false }));
 flashMesh.position.set(0.16, -0.125, -0.55); camera.add(flashMesh);
@@ -925,48 +1022,88 @@ function nameSprite(text) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
   s.scale.set(1.25, 0.23, 1); return s;
 }
+// 2頭身のキャラ：大きな球の頭の前に、写真の顔を曲面で埋めこむ
 function buildChar(e) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
-  const suit = new THREE.MeshLambertMaterial({ color: SUITS[e.slot % 4] });
-  const dark = new THREE.MeshLambertMaterial({ color: '#1b1b1f' });
-  const skin = new THREE.MeshLambertMaterial({ color: '#e0b48c' });
-  const box = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); body.add(m); return m; };
-  e.legL = box(0.2, 0.8, 0.22, dark, -0.12, 0.4, 0); e.legR = box(0.2, 0.8, 0.22, dark, 0.12, 0.4, 0);
-  box(0.56, 0.66, 0.3, suit, 0, 1.12, 0);
-  box(0.12, 0.3, 0.02, new THREE.MeshLambertMaterial({ color: '#f2f2f2' }), 0, 1.3, 0.16);
-  box(0.05, 0.28, 0.025, new THREE.MeshLambertMaterial({ color: '#a01010' }), 0, 1.22, 0.17);
-  box(0.14, 0.58, 0.14, suit, -0.36, 1.1, 0);
-  const arm = box(0.14, 0.14, 0.5, suit, 0.3, 1.3, 0.22);
-  e.gun3 = box(0.07, 0.1, 0.3, gunMat.clone(), 0.3, 1.34, 0.56);
-  void arm;
-  // 頭：前の面に顔テクスチャ
-  e.faceCanvas = document.createElement('canvas'); e.faceCanvas.width = e.faceCanvas.height = FS;
-  e.faceTex = new THREE.CanvasTexture(e.faceCanvas);
-  const hairC = new THREE.MeshLambertMaterial({ color: '#2a2420' });
-  const faceM = new THREE.MeshLambertMaterial({ map: e.faceTex });
-  e.head = new THREE.Group(); e.head.position.set(0, 1.45, 0); body.add(e.head);
-  const headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.44, 0.42), [skin, skin, hairC, skin, faceM, hairC]);
-  headMesh.position.y = 0.22; e.head.add(headMesh); e.headMesh = headMesh;
+  const std = (color, rough = 0.7, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+  const suit = std(SUITS[e.slot % 4], 0.8), pants = std('#1c1d22', 0.85), shoe = std('#0d0d0f', 0.35, 0.1);
+  e.skinMat = std('#e0b48c', 0.62); e.hairMat = std('#2a2420', 0.9);
+  const add = (geo, mat, x, y, z, parent = body) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
+  const leg = (sx) => {
+    const g = new THREE.Group(); g.position.set(sx * 0.1, 0.42, 0); body.add(g);
+    add(new THREE.CylinderGeometry(0.085, 0.075, 0.36, 12), pants, 0, -0.18, 0, g);
+    add(new THREE.SphereGeometry(0.1, 14, 10), shoe, 0, -0.37, 0.05, g).scale.set(0.9, 0.55, 1.5);
+    return g;
+  };
+  e.legL = leg(-1); e.legR = leg(1);
+  add(new THREE.CylinderGeometry(0.2, 0.22, 0.4, 18), suit, 0, 0.62, 0);
+  add(new THREE.SphereGeometry(0.22, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), suit, 0, 0.81, 0).scale.set(1.15, 0.5, 0.92); // 肩
+  add(new THREE.SphereGeometry(0.22, 18, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), pants, 0, 0.43, 0).scale.set(1, 0.45, 0.95);
+  const v = add(new THREE.CircleGeometry(0.1, 3), std('#f2f2ee', 0.9), 0, 0.75, 0.212); v.rotation.z = -Math.PI / 2; v.castShadow = false; // シャツ
+  add(new THREE.BoxGeometry(0.045, 0.2, 0.02), std('#9a1414', 0.55), 0, 0.68, 0.22);                                          // ネクタイ
+  add(new THREE.CylinderGeometry(0.223, 0.223, 0.04, 18), std('#111111', 0.4, 0.3), 0, 0.44, 0);                               // ベルト
+  for (const sx of [-1, 1]) { // 両手で銃をかまえる
+    const g = new THREE.Group(); g.position.set(sx * 0.25, 0.76, 0.02); g.rotation.y = -sx * 0.6; body.add(g);
+    add(new THREE.CylinderGeometry(0.06, 0.055, 0.3, 10), suit, 0, 0, 0.14, g).rotation.x = Math.PI / 2;
+    add(new THREE.SphereGeometry(0.06, 10, 8), e.skinMat, 0, 0, 0.31, g);
+  }
+  e.gun3 = add(new THREE.BoxGeometry(0.06, 0.09, 0.24), gunMat.clone(), 0, 0.8, 0.42);
+  e.rifle3 = makeRifle(); e.rifle3.position.set(0, 0.78, 0.38); e.rifle3.rotation.y = Math.PI; body.add(e.rifle3); e.rifle3.visible = false;
+  // 頭
+  e.head = new THREE.Group(); e.head.position.set(0, HEAD_Y, 0); body.add(e.head);
+  add(new THREE.SphereGeometry(HEAD_R, 32, 24), e.skinMat, 0, 0, 0, e.head);
+  add(new THREE.SphereGeometry(HEAD_R * 1.035, 32, 20, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9, 0, Math.PI * 0.62), e.hairMat, 0, 0, 0, e.head); // 後ろ髪
+  add(new THREE.SphereGeometry(HEAD_R * 1.03, 32, 8, 0, Math.PI * 2, 0, 0.5), e.hairMat, 0, 0, 0, e.head);                                   // 頭のてっぺん
+  for (const sx of [-1, 1]) add(new THREE.SphereGeometry(0.07, 10, 8), e.skinMat, sx * HEAD_R * 0.98, -0.03, 0, e.head).scale.set(0.5, 1, 0.8); // 耳
+  e.faceCanvas = document.createElement('canvas'); e.faceCanvas.width = e.faceCanvas.height = FS * 2;
+  e.headCanvas = document.createElement('canvas'); e.headCanvas.width = e.headCanvas.height = FS * 2;
+  e.faceTex = new THREE.CanvasTexture(e.headCanvas); e.faceTex.anisotropy = 4;
+  const face = add(new THREE.SphereGeometry(HEAD_R * 1.012, 32, 24, Math.PI / 2 - 1.0, 2.0, 0.5, 1.75),
+    new THREE.MeshStandardMaterial({ map: e.faceTex, transparent: true, roughness: 0.6 }), 0, 0, 0, e.head);
+  face.castShadow = false;
   // たんこぶ（ダメージで出てくる）
-  e.bumps = [[0.06, 0.46, 0.05], [-0.2, 0.34, 0.08], [0.21, 0.3, -0.02], [-0.05, 0.45, -0.12]].map(([x, y, z]) => {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshLambertMaterial({ color: '#e88a7a' }));
-    m.position.set(x, y, z); m.visible = false; e.head.add(m); return m;
+  e.bumps = [[0.1, 0.4, 0.12], [-0.3, 0.26, 0.16], [0.33, 0.2, 0.06], [-0.06, 0.37, -0.22]].map(([x, y, z]) => {
+    const m = add(new THREE.SphereGeometry(0.08, 12, 8), std('#e88a7a', 0.5), x, y, z, e.head); m.visible = false; return m;
   });
-  e.tag = nameSprite(e.name); e.tag.position.y = 2.25; root.add(e.tag);
-  e.halo = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), goldMat); e.halo.position.y = 2.55; e.halo.visible = false; root.add(e.halo);
+  e.helmShown = 0; e.helmMesh = null;
+  e.tag = nameSprite(e.name); e.tag.position.y = 2.05; root.add(e.tag);
+  e.halo = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), goldMat); e.halo.position.y = 2.3; e.halo.visible = false; root.add(e.halo);
   e.root = root; e.body = body;
   scene.add(root);
+}
+function setHelmetMesh(e) {
+  if (e.helmShown === e.helmLv) return;
+  if (e.helmMesh) { e.head.remove(e.helmMesh); e.helmMesh = null; }
+  if (e.helmLv) { e.helmMesh = makeHelmet(e.helmLv); e.head.add(e.helmMesh); }
+  e.helmShown = e.helmLv;
+}
+// 写真（または似顔絵）から肌と髪の色をひろって、頭全体の色を合わせる
+function sampleColors(e) {
+  const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
+  x.setTransform(0.25, 0, 0, 0.25, 0, 0); drawFace(x, e, MAX_HP, false); x.setTransform(1, 0, 0, 1, 0, 0);
+  const avg = (pts) => { let r = 0, g = 0, b = 0, n = 0; for (const [px, py] of pts) { const d = x.getImageData(px - 1, py - 1, 3, 3).data; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } } return [r / n, g / n, b / n]; };
+  const sk = avg([[9, 20], [23, 20], [16, 23]]);
+  e.skinMat.color.setRGB(sk[0] / 255, sk[1] / 255, sk[2] / 255);
+  const hr = avg([[16, 1], [6, 2], [26, 2]]), lum = (hr[0] + hr[1] + hr[2]) / 765, sat = (Math.max(...hr) - Math.min(...hr)) / 255;
+  if (lum < 0.45 && sat < 0.35) e.hairMat.color.setRGB(hr[0] / 255, hr[1] / 255, hr[2] / 255); else e.hairMat.color.set('#2a2420');
 }
 function refreshFace(e, force) {
   const key = Math.ceil(e.hp / 5) + '|' + e.alive + '|' + (e.faceImg ? 1 : 0);
   if (!force && key === e.faceKey) return;
   e.faceKey = key;
   const ctx = e.faceCanvas.getContext('2d');
-  drawFace(ctx, e, e.hp, !e.alive);
+  ctx.setTransform(2, 0, 0, 2, 0, 0); drawFace(ctx, e, e.hp, !e.alive); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // 頭に貼る用：ふちをぼかして肌になじませる
+  const S = FS * 2, h = e.headCanvas.getContext('2d');
+  h.globalCompositeOperation = 'source-over'; h.clearRect(0, 0, S, S); h.drawImage(e.faceCanvas, 0, 0);
+  h.globalCompositeOperation = 'destination-in';
+  const g = h.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2); g.addColorStop(0, '#000'); g.addColorStop(0.74, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  h.save(); h.translate(S / 2, S / 2); h.scale(0.94, 1); h.translate(-S / 2, -S / 2); h.fillStyle = g; h.fillRect(0, 0, S, S); h.restore();
+  h.globalCompositeOperation = 'source-over';
   e.faceTex.needsUpdate = true;
   const d = clamp(1 - e.hp / MAX_HP, 0, 1);
-  e.swell = 1 + d * 0.22; // ボコボコにはれる
-  e.headMesh.scale.set(1 + d * 0.25, 1 + d * 0.12, 1 + d * 0.15);
+  e.swell = 1 + d * 0.12; // ボコボコにはれる
+  e.head.scale.set(1 + d * 0.16, 1 + d * 0.07, 1 + d * 0.12);
   e.bumps.forEach((b, i) => { const th = [0.3, 0.5, 0.7, 0.85][i]; b.visible = d >= th; b.scale.setScalar(1 + (d - th) * 2); });
   for (const c of e.thumbs) { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(e.faceCanvas, 0, 0, c.width, c.height); }
 }
@@ -983,12 +1120,14 @@ function makeEnt(info) {
     faceImg: null, face: info.face || null,
     x: 0, z: 0, yaw: 0, pitch: 0, rx: 0, rz: 0, ryaw: 0, tx: 0, tz: 0, tyaw: 0, tpitch: 0,
     hp: MAX_HP, alive: false, kills: 0, deaths: 0, respawnAt: 0, swell: 1, thumbs: [], faceKey: '', fall: 0, walk: 0,
+    helmLv: 0, helmDur: 0, ar: 0,
     // CPU 用
     path: [], repath: 0, target: null, seenAt: 0, nextFire: 0, ammo: MAG, strafe: 1, strafeT: 0, huntId: null,
   };
   if (info.id === net.myId && prof.faceImg) e.faceImg = prof.faceImg;
-  else if (e.face) { const im = new Image(); im.onload = () => { e.faceImg = im; refreshFace(e, true); }; im.src = e.face; }
+  else if (e.face) { const im = new Image(); im.onload = () => { e.faceImg = im; sampleColors(e); refreshFace(e, true); }; im.src = e.face; }
   buildChar(e);
+  sampleColors(e);
   refreshFace(e, true);
   return e;
 }
@@ -999,6 +1138,7 @@ function startGame(cfg) {
   game = {
     ents: [], byId: new Map(), me: null, diff: cfg.diff, time: 0, timeLeft: MATCH_TIME, gold: null, over: false,
     packs: PACKS.map(([x, z]) => ({ x, z, avail: true, at: 0 })), snapT: 0, sendT: 0,
+    chests: CHESTS.map(([x, z]) => ({ x, z, open: false, at: 0 })), items: [], itemSeq: 0,
     ammo: MAG, reloadT: 0, nextFire: 0, recoil: 0, hurt: 0, hitMark: 0, deathCam: 0, lastShotGold: false,
   };
   for (const info of cfg.roster) {
@@ -1068,13 +1208,20 @@ function hostSpawn(e) {
 }
 function emit(ev) { handleEvent(ev); if (net.mode === 'host') broadcast(ev); }
 
-function hostDamage(v, a, head) {
+function hostDamage(v, a, head, w) {
   if (!game || game.over || !v.alive) return;
   const gold = game.gold === a.id;
-  const dmg = gold ? 999 : head ? DMG_HEAD : DMG_BODY;
+  let dmg = gold ? 999 : w === 'ar' ? (head ? AR_HEAD : AR_BODY) : head ? DMG_HEAD : DMG_BODY;
+  let broke = 0, blocked = 0;
+  if (head && !gold && v.helmLv) { // ヘルメットが頭へのダメージを減らし、そのぶんすり減る
+    const H = HELM[v.helmLv], ab = Math.min(v.helmDur, dmg * H.red);
+    dmg -= ab; v.helmDur -= ab; blocked = 1;
+    if (v.helmDur <= 0.5) { v.helmLv = 0; v.helmDur = 0; broke = 1; }
+  }
+  dmg = Math.round(dmg);
   v.hp = Math.max(0, v.hp - dmg);
   if (v.isBot && a !== v) v.huntId = a.id;
-  emit({ t: 'hit', v: v.id, a: a.id, h: head ? 1 : 0, hp: v.hp });
+  emit({ t: 'hit', v: v.id, a: a.id, h: head ? 1 : 0, hp: v.hp, hl: v.helmLv, hd: Math.round(v.helmDur), br: broke, bl: blocked });
   if (v.hp <= 0) {
     v.deaths++; if (a !== v) a.kills++;
     v.respawnAt = game.time + RESPAWN;
@@ -1083,11 +1230,18 @@ function hostDamage(v, a, head) {
     if (a.kills >= WIN_KILLS) hostEnd();
   }
 }
-function hostFire(shooter, a, b, tgId, head) {
+function hostFire(shooter, a, b, tgId, head, w) {
   if (!game || !shooter.alive || game.over) return;
-  emit({ t: 'shot', id: shooter.id, a, b, g: game.gold === shooter.id ? 1 : 0 });
+  const gold = game.gold === shooter.id, weapon = !gold && w === 'ar' && shooter.ar > 0 ? 'ar' : 'p';
+  emit({ t: 'shot', id: shooter.id, a, b, g: gold ? 1 : 0, w: weapon === 'ar' ? 1 : 0 });
   const tg = tgId ? game.byId.get(tgId) : null;
-  if (tg && tg !== shooter) hostDamage(tg, shooter, !!head);
+  if (tg && tg !== shooter) hostDamage(tg, shooter, !!head, weapon);
+}
+function rollLoot() { const r = Math.random(); return r < 0.4 ? 'ar' : r < 0.62 ? 'h1' : r < 0.8 ? 'h2' : r < 0.9 ? 'h3' : 'med'; }
+function wantsItem(e, k) {
+  if (k === 'ar') return e.ar < 30;
+  if (k === 'med') return e.hp < MAX_HP;
+  const lv = Number(k[1]); return lv > e.helmLv || (lv === e.helmLv && e.helmDur < HELM[lv].dur * 0.5);
 }
 function hostEnd() {
   if (game.over) return;
@@ -1109,12 +1263,31 @@ function hostTick(dt) {
     }
   }
   for (const p of game.packs) if (!p.avail && game.time >= p.at) p.avail = true;
+  // 宝箱とアイテム
+  for (const e of game.ents) {
+    if (!e.alive) continue;
+    game.chests.forEach((c, i) => {
+      if (c.open || Math.hypot(e.x - c.x, e.z - c.z) > 1.5) return;
+      c.open = true; c.at = game.time + 30;
+      const k = rollLoot();
+      game.items.push({ iid: ++game.itemSeq, k, x: c.x, z: c.z, ready: game.time + 0.7, until: game.time + 40 });
+      emit({ t: 'chest', i, by: e.id, k });
+    });
+    for (const it of game.items) {
+      if (it.taken || game.time < it.ready || Math.hypot(e.x - it.x, e.z - it.z) > 1.5 || !wantsItem(e, it.k)) continue;
+      it.taken = true;
+      emit({ t: 'loot', id: e.id, k: it.k, hp: it.k === 'med' ? Math.min(MAX_HP, e.hp + 50) : e.hp });
+    }
+  }
+  game.items = game.items.filter((it) => !it.taken && game.time < it.until);
+  for (const c of game.chests) if (c.open && game.time >= c.at) c.open = false;
   for (const e of game.ents) if (e.isBot) botThink(e, dt);
   game.snapT -= dt;
   if (game.snapT <= 0 && net.mode === 'host') {
     game.snapT = 1 / 15;
     broadcast({ t: 'snap', tl: Math.round(game.timeLeft * 10) / 10, g: game.gold, pk: game.packs.map((p) => (p.avail ? 1 : 0)),
-      e: game.ents.map((e) => [e.id, +e.x.toFixed(2), +e.z.toFixed(2), +e.yaw.toFixed(3), +e.pitch.toFixed(3), e.hp, e.alive ? 1 : 0, e.kills, e.deaths]) });
+      ch: game.chests.map((c) => (c.open ? 1 : 0)), it: game.items.map((it) => [it.iid, it.k, it.x, it.z]),
+      e: game.ents.map((e) => [e.id, +e.x.toFixed(2), +e.z.toFixed(2), +e.yaw.toFixed(3), +e.pitch.toFixed(3), e.hp, e.alive ? 1 : 0, e.kills, e.deaths, e.helmLv, Math.round(e.helmDur), e.ar]) });
   }
 }
 
@@ -1138,7 +1311,7 @@ function botThink(b, dt) {
     const dx = tg.x - b.x, dz = tg.z - b.z;
     const want = Math.atan2(-dx, -dz);
     b.yaw = wrapAng(b.yaw + clamp(wrapAng(want - b.yaw), -P.turn * dt, P.turn * dt));
-    b.pitch = Math.atan2(1.2 - EYE, bd);
+    b.pitch = Math.atan2(0.9 - EYE, bd);
     // 左右にちょこちょこ動く
     b.strafeT -= dt; if (b.strafeT <= 0) { b.strafeT = 0.6 + Math.random() * 1.2; b.strafe = Math.random() < 0.5 ? -1 : 1; }
     const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw), rx = -fz, rz = fx;
@@ -1146,16 +1319,19 @@ function botThink(b, dt) {
     mx = fx * keep + rx * b.strafe * 0.8; mz = fz * keep + rz * b.strafe * 0.8;
     if (b.reloadAt && game.time >= b.reloadAt) { b.reloadAt = 0; b.ammo = MAG; }
     if (!b.reloadAt && game.time - b.seenAt > P.react && Math.abs(wrapAng(want - b.yaw)) < 0.2 && game.time >= b.nextFire) {
-      b.nextFire = game.time + P.gap * (0.8 + Math.random() * 0.4);
+      const useAR = b.ar > 0 && game.gold !== b.id;
+      b.nextFire = game.time + (useAR ? Math.min(P.gap * 0.4, 0.16) : P.gap) * (0.8 + Math.random() * 0.4);
       const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
-      const yaw = b.yaw + gauss() * P.err * 1.4, aimY = Math.random() < (game.diff === 'agent' ? 0.35 : 0.12) ? 1.68 : 1.1;
-      const pitch = Math.atan2(aimY - EYE, bd) + gauss() * P.err;
+      const err = P.err * (useAR ? 1.3 : 1);
+      const yaw = b.yaw + gauss() * err * 1.4, aimY = Math.random() < (game.diff === 'agent' ? 0.45 : 0.25) ? HEAD_Y : 0.5;
+      const pitch = Math.atan2(aimY - EYE, bd) + gauss() * err;
       const o = { x: b.x, y: EYE, z: b.z };
       const d = { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) };
       const r = rayShot(o, d, b, false);
       const L = Math.min(r.dist, 120);
-      hostFire(b, [o.x, o.y - 0.15, o.z], [+(o.x + d.x * L).toFixed(2), +(o.y + d.y * L).toFixed(2), +(o.z + d.z * L).toFixed(2)], r.ent ? r.ent.id : null, r.head);
-      b.ammo--; if (game.gold === b.id || b.ammo <= 0) { b.reloadAt = game.time + (game.gold === b.id ? GOLD_RELOAD : RELOAD); }
+      hostFire(b, [o.x, o.y - 0.15, o.z], [+(o.x + d.x * L).toFixed(2), +(o.y + d.y * L).toFixed(2), +(o.z + d.z * L).toFixed(2)], r.ent ? r.ent.id : null, r.head, useAR ? 'ar' : 'p');
+      if (useAR) b.ar--;
+      else { b.ammo--; if (game.gold === b.id || b.ammo <= 0) { b.reloadAt = game.time + (game.gold === b.id ? GOLD_RELOAD : RELOAD); } }
     }
   } else {
     b.target = null;
@@ -1164,7 +1340,11 @@ function botThink(b, dt) {
       b.repath = 2.5 + Math.random();
       let goal;
       const hunt = b.huntId && game.byId.get(b.huntId);
-      if (!game.gold && Math.random() < 0.6) goal = [0.9, 0.9];
+      const want = game.items.filter((it) => wantsItem(b, it.k) && Math.hypot(it.x - b.x, it.z - b.z) < 25)[0];
+      const chest = game.chests.filter((c) => !c.open).sort((c1, c2) => Math.hypot(c1.x - b.x, c1.z - b.z) - Math.hypot(c2.x - b.x, c2.z - b.z))[0];
+      if (want) goal = [want.x, want.z];
+      else if (!game.gold && Math.random() < 0.5) goal = [0.9, 0.9];
+      else if (chest && Math.random() < 0.45) goal = [chest.x, chest.z];
       else if (b.hp < 55 && game.packs.some((p) => p.avail)) { const p = game.packs.filter((q) => q.avail).sort((p1, p2) => Math.hypot(p1.x - b.x, p1.z - b.z) - Math.hypot(p2.x - b.x, p2.z - b.z))[0]; goal = [p.x, p.z]; }
       else if (hunt && hunt.alive) goal = [hunt.x, hunt.z];
       else { const others = game.ents.filter((o) => o !== b && o.alive); const o = others[(Math.random() * others.length) | 0]; goal = o && Math.random() < 0.6 ? [o.x, o.z] : SPAWNS[(Math.random() * SPAWNS.length) | 0]; }
@@ -1196,11 +1376,14 @@ function handleEvent(ev) {
     const s = game.byId.get(ev.id);
     if (!Array.isArray(ev.a) || !Array.isArray(ev.b)) return;
     addTracer(ev.a.map(Number), ev.b.map(Number), !!ev.g);
-    gunSound(!!ev.g, ev.a[0], ev.a[2], false);
+    gunSound(!!ev.g, ev.a[0], ev.a[2], false, !!ev.w);
     if (s) s.flashT = 0.06;
   } else if (ev.t === 'hit') {
     const v = game.byId.get(ev.v); if (!v) return;
     v.hp = num(ev.hp, v.hp);
+    v.helmLv = clamp(num(ev.hl, v.helmLv), 0, 3); v.helmDur = num(ev.hd, v.helmDur); setHelmetMesh(v);
+    if (ev.bl) playBuf(sounds.clack, 0.5 * volAt(v.rx, v.rz), { rate: 1.7 }); // カンッ（ヘルメットに当たった）
+    if (ev.br) { feed(`⛑ ${v.name} のヘルメットがこわれた！`); }
     if (v === me) {
       game.hurt = 1; sfx('hurt', 0.9);
       const at = game.byId.get(ev.a);
@@ -1211,7 +1394,7 @@ function handleEvent(ev) {
     refreshFace(v);
   } else if (ev.t === 'kill') {
     const k = game.byId.get(ev.k), v = game.byId.get(ev.v); if (!v) return;
-    v.alive = false; v.hp = 0; v.fall = 0;
+    v.alive = false; v.hp = 0; v.fall = 0; v.helmLv = 0; v.helmDur = 0; v.ar = 0; setHelmetMesh(v);
     if (net.isHost) { /* kills/deaths は hostDamage で数えた */ } else { v.deaths++; if (k && k !== v) k.kills++; }
     sfx('die', 0.7 * volAt(v.rx, v.rz));
     const how = ev.g ? '✨ゴールデン' : ev.h ? '🎯ヘッドショット' : '🔫';
@@ -1224,6 +1407,7 @@ function handleEvent(ev) {
     e.x = e.rx = e.tx = num(ev.x); e.z = e.rz = e.tz = num(ev.z); e.yaw = e.ryaw = e.tyaw = num(ev.yaw); e.pitch = 0;
     e.life = num(ev.n, (e.life || 0) + 1);
     e.hp = MAX_HP; e.alive = true; e.fall = 0; e.path = []; e.target = null; e.huntId = null; e.ammo = MAG; e.reloadAt = 0;
+    e.helmLv = 0; e.helmDur = 0; e.ar = 0; setHelmetMesh(e);
     if (e === me) { game.ammo = MAG; game.reloadT = 0; }
     refreshFace(e);
   } else if (ev.t === 'gold') {
@@ -1236,6 +1420,18 @@ function handleEvent(ev) {
     e.hp = num(ev.hp, e.hp); if (game.packs[ev.p]) { game.packs[ev.p].avail = false; game.packs[ev.p].at = game.time + 20; }
     if (e === me) { sfx('pickup', 0.8); feed('💊 体力が回復した！'); }
     refreshFace(e);
+  } else if (ev.t === 'chest') {
+    const c = game.chests[ev.i]; if (!c) return;
+    c.open = true;
+    sfx('chest', 0.9 * volAt(c.x, c.z));
+    if (me && ev.by === me.id) feed(`🎁 宝箱から ${itemName(ev.k)} が出た！`);
+  } else if (ev.t === 'loot') {
+    const e = game.byId.get(ev.id); if (!e) return;
+    const k = String(ev.k);
+    if (k === 'ar') e.ar = AR_MAG;
+    else if (k === 'med') { e.hp = num(ev.hp, e.hp); refreshFace(e); }
+    else if (k[0] === 'h') { const lv = clamp(Number(k[1]) || 1, 1, 3); e.helmLv = lv; e.helmDur = HELM[lv].dur; setHelmetMesh(e); }
+    if (e === me) { sfx('pickup', 0.8); feed(`✅ ${itemName(k)} を手に入れた！`); if (k === 'ar') game.recoil = 0; }
   } else if (ev.t === 'botify') {
     const e = game.byId.get(ev.id); if (!e) return;
     e.isBot = true; feed(`${e.name} が抜けたので CPU が代わりに戦います`);
@@ -1245,14 +1441,19 @@ function handleEvent(ev) {
     showResult();
   }
 }
+function itemName(k) { return k === 'ar' ? 'アサルトライフル（40発）' : k === 'med' ? '救急箱' : `ヘルメット ${(HELM[Number(String(k)[1])] || HELM[1]).name}`; }
 function applySnap(s) {
   if (!game || !Array.isArray(s.e)) return;
   game.timeLeft = num(s.tl, game.timeLeft);
   game.gold = s.g || null;
   if (Array.isArray(s.pk)) s.pk.forEach((v, i) => { if (game.packs[i]) game.packs[i].avail = !!v; });
+  if (Array.isArray(s.ch)) s.ch.forEach((v, i) => { if (game.chests[i]) game.chests[i].open = !!v; });
+  if (Array.isArray(s.it)) game.items = s.it.filter((r) => Array.isArray(r) && ['ar', 'med', 'h1', 'h2', 'h3'].includes(r[1])).map(([iid, k, x, z]) => ({ iid: num(iid), k, x: num(x), z: num(z) }));
   for (const row of s.e) {
     const e = game.byId.get(row[0]); if (!e) continue;
-    const [, x, z, yaw, pitch, hp, alive, k, d] = row;
+    const [, x, z, yaw, pitch, hp, alive, k, d, hl, hd, ar] = row;
+    e.helmLv = clamp(num(hl), 0, 3); e.helmDur = num(hd); setHelmetMesh(e);
+    if (e !== game.me) e.ar = num(ar);
     if (e !== game.me) { e.tx = num(x); e.tz = num(z); e.tyaw = num(yaw); e.tpitch = num(pitch); e.x = e.tx; e.z = e.tz; }
     e.hp = num(hp, e.hp); e.kills = num(k); e.deaths = num(d);
     if (!!alive !== e.alive) { e.alive = !!alive; if (!e.alive) e.fall = 0; }
@@ -1266,12 +1467,16 @@ function applySnap(s) {
 function tryFire() {
   const me = game.me;
   if (!me || !me.alive || game.over) return;
-  if (game.reloadT > 0 || game.time < game.nextFire) return;
-  if (game.ammo <= 0) { startReload(); return; }
-  const gold = game.gold === me.id;
-  game.nextFire = game.time + FIRE_GAP; game.ammo--; game.recoil = 1;
+  const gold = game.gold === me.id, useAR = !gold && me.ar > 0;
+  if (game.time < game.nextFire) return;
+  if (!useAR) {
+    if (game.reloadT > 0) return;
+    if (game.ammo <= 0) { startReload(); return; }
+  }
+  game.nextFire = game.time + (useAR ? AR_GAP : FIRE_GAP); game.recoil = useAR ? 0.6 : 1;
   const o = { x: me.x, y: EYE, z: me.z };
   let d = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(me.pitch, me.yaw, 0, 'YXZ'));
+  if (useAR) { d.x += (Math.random() - 0.5) * 0.03; d.y += (Math.random() - 0.5) * 0.03; d.z += (Math.random() - 0.5) * 0.03; d.normalize(); } // 連射は少しばらける
   // エイムお助け：照準のすぐ近くの相手に弾が少し寄る（スマホは強め）
   if (settings.assist) {
     const t = aimTarget(me, isTouch ? 0.09 : 0.04);
@@ -1281,10 +1486,12 @@ function tryFire() {
   const L = Math.min(r.dist, 120);
   const a = [+(o.x + Math.cos(me.yaw) * 0.18).toFixed(2), +(o.y - 0.15).toFixed(2), +(o.z - Math.sin(me.yaw) * 0.18).toFixed(2)];
   const b = [+(o.x + d.x * L).toFixed(2), +(o.y + d.y * L).toFixed(2), +(o.z + d.z * L).toFixed(2)];
-  addTracer(a, b, gold); gunSound(gold, 0, 0, true);
+  addTracer(a, b, gold); gunSound(gold, 0, 0, true, useAR);
   muzzle.intensity = 2.5; flashMesh.material.opacity = 1; flashMesh.rotation.z = Math.random() * 3;
-  if (net.isHost) hostFire(me, a, b, r.ent ? r.ent.id : null, r.head);
-  else sendHost({ t: 'fire', a, b, tg: r.ent ? r.ent.id : null, h: r.head ? 1 : 0 });
+  if (net.isHost) hostFire(me, a, b, r.ent ? r.ent.id : null, r.head, useAR ? 'ar' : 'p');
+  else sendHost({ t: 'fire', a, b, tg: r.ent ? r.ent.id : null, h: r.head ? 1 : 0, w: useAR ? 'ar' : 'p' });
+  if (useAR) { me.ar--; if (me.ar <= 0) { feed('🗑 ライフルの弾がなくなったので捨てた'); playBuf(sounds.thunk, 0.5); } return; }
+  game.ammo--;
   if (gold) startReload();
   else if (game.ammo <= 0) setTimeout(() => game && startReload(), 200);
 }
@@ -1294,7 +1501,7 @@ function aimTarget(me, cone) {
   let best = null, bestA = cone;
   for (const e of game.ents) {
     if (e === me || !e.alive) continue;
-    const c = new THREE.Vector3(e.rx - me.x, 1.15 - EYE, e.rz - me.z), L = c.length();
+    const c = new THREE.Vector3(e.rx - me.x, 1.0 - EYE, e.rz - me.z), L = c.length();
     if (L > 50 || L < 0.5) continue;
     c.normalize(); const ang = Math.acos(clamp(c.dot(d), -1, 1));
     if (ang < bestA && canSee(me, { x: e.rx, z: e.rz })) { bestA = ang; best = { e, dir: c, ang, dist: L }; }
@@ -1302,7 +1509,7 @@ function aimTarget(me, cone) {
   return best;
 }
 function startReload() {
-  if (!game || game.reloadT > 0) return;
+  if (!game || game.reloadT > 0 || (game.me && game.me.ar > 0 && game.gold !== game.me.id)) return;
   const gold = game.me && game.gold === game.me.id;
   if (!gold && game.ammo >= MAG) return;
   game.reloadT = gold ? GOLD_RELOAD : RELOAD; sfx('reload', 0.7);
@@ -1388,12 +1595,13 @@ function frame(now) {
   goldBall.rotation.y += dt * 2; goldBall.position.y = 1.25 + Math.sin(now / 400) * 0.08;
   goldBall.visible = !game || !game.gold; goldLight.intensity = goldBall.visible ? 1.2 : 0;
   packMeshes.forEach((m, i) => { m.rotation.y += dt * 1.5; m.visible = !game || game.packs[i].avail; });
+  syncWorldItems(dt, now);
   renderer.render(scene, camera);
 }
 function idleCam(t) {
   camera.position.set(Math.sin(t * 0.1) * 18, 6, Math.cos(t * 0.1) * 18);
   camera.lookAt(0, 1, 0);
-  viewGun.visible = false;
+  viewGun.visible = false; viewRifle.visible = false;
 }
 function step(dt) {
   game.time += dt;
@@ -1420,7 +1628,7 @@ function step(dt) {
       const active = input.fire || k.Space || L > 0.1 || game.time - (game.lookInT || -9) < 0.3;
       if (settings.assist && active) {
         const ty = Math.atan2(-(near.e.rx - me.x), -(near.e.rz - me.z));
-        const flat = Math.hypot(near.e.rx - me.x, near.e.rz - me.z), tp = Math.atan2(1.2 - EYE, flat);
+        const flat = Math.hypot(near.e.rx - me.x, near.e.rz - me.z), tp = Math.atan2(1.0 - EYE, flat);
         const a = Math.min(1, dt * (isTouch ? 4 : 2.5)) * (1 - near.ang / (cone * 1.3));
         me.yaw += wrapAng(ty - me.yaw) * a; me.pitch += (tp - me.pitch) * a;
         game.lock = near.e;
@@ -1454,14 +1662,16 @@ function step(dt) {
     }
     const R = e.root;
     R.position.set(e.rx, 0, e.rz); R.rotation.y = (e === me ? e.yaw : e.ryaw) + Math.PI;
-    e.head.rotation.x = -e.pitch * 0.6;
+    e.head.rotation.x = -e.pitch * 0.35;
     const sw = Math.sin(e.walk) * 0.5 * (e === me ? 1 : (e.stride || 0));
     e.legL.rotation.x = sw; e.legR.rotation.x = -sw;
     if (!e.alive) { e.fall = Math.min(1, e.fall + dt * 3); } else e.fall = 0;
-    e.body.rotation.x = -e.fall * Math.PI / 2 * 0.98; e.body.position.y = e.fall * 0.15;
+    e.body.rotation.x = -e.fall * Math.PI / 2 * 0.98; e.body.position.y = e.fall * 0.4;
     e.flinch = Math.max(0, (e.flinch || 0) - dt); e.body.rotation.z = e.flinch ? Math.sin(e.flinch * 60) * 0.08 : 0;
     e.tag.visible = e.alive; e.halo.visible = game.gold === e.id && e.alive;
-    if (e.halo.visible) e.halo.position.y = 2.55 + Math.sin(game.time * 4) * 0.06;
+    if (e.halo.visible) e.halo.position.y = 2.3 + Math.sin(game.time * 4) * 0.06;
+    const rifle = e.ar > 0 && game.gold !== e.id;
+    e.rifle3.visible = rifle; e.gun3.visible = !rifle;
     e.gun3.material.color.set(game.gold === e.id ? '#ffcc33' : '#222428');
   }
   // カメラ
@@ -1469,17 +1679,19 @@ function step(dt) {
     if (me.alive) {
       const bob = Math.sin(me.walk) * 0.012;
       camera.position.set(me.x, EYE + bob, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
-      viewGun.visible = true;
+      const rifle = me.ar > 0 && game.gold !== me.id;
+      viewGun.visible = !rifle; viewRifle.visible = rifle;
     } else {
       game.deathCam = Math.min(1, game.deathCam + dt * 1.5);
-      camera.position.set(me.rx, EYE - game.deathCam * 1.2, me.rz); camera.rotation.set(me.pitch - game.deathCam * 0.6, me.yaw, game.deathCam * 0.7);
-      viewGun.visible = false;
+      camera.position.set(me.rx, EYE - game.deathCam * 1.0, me.rz); camera.rotation.set(me.pitch - game.deathCam * 0.6, me.yaw, game.deathCam * 0.7);
+      viewGun.visible = false; viewRifle.visible = false;
     }
   }
   game.recoil = Math.max(0, game.recoil - dt * 8);
   const rl = game.reloadT > 0 ? Math.sin(Math.min(1, 1 - game.reloadT / RELOAD) * Math.PI) : 0;
   viewGun.position.set(0.16, -0.14 - rl * 0.1 + (me ? Math.sin(me.walk * 0.5) * 0.008 : 0), -0.4 + game.recoil * 0.04);
   viewGun.rotation.x = game.recoil * 0.25 - rl * 0.8;
+  viewRifle.position.set(0.17, -0.17 + (me ? Math.sin(me.walk * 0.5) * 0.008 : 0), -0.42 + game.recoil * 0.05); viewRifle.rotation.x = game.recoil * 0.06;
   const iGold = me && game.gold === me.id;
   gunMat.color.set(iGold ? '#ffcc33' : '#222428'); gunMat.emissive.set(iGold ? '#5a3c00' : '#000000');
   muzzle.intensity = Math.max(0, muzzle.intensity - dt * 40); flashMesh.material.opacity = Math.max(0, flashMesh.material.opacity - dt * 20);
@@ -1490,8 +1702,12 @@ function step(dt) {
   $('fireBtn').classList.toggle('gold', !!iGold);
   if (me) {
     $('hpfill').style.width = me.hp + '%'; $('hptext').textContent = `体力 ${me.hp}  ☠ ${me.deaths}`;
-    $('ammoNum').textContent = game.reloadT > 0 ? '…' : game.ammo;
-    $('ammoSub').textContent = iGold ? '✨ ゴールデンガン（一発でたおせる）' : game.reloadT > 0 ? 'リロード中' : `PP8 / ${MAG}`;
+    const rifle = !iGold && me.ar > 0;
+    $('ammoNum').textContent = rifle ? me.ar : game.reloadT > 0 ? '…' : game.ammo;
+    $('ammoSub').textContent = iGold ? '✨ ゴールデンガン（一発でたおせる）' : rifle ? `アサルトライフル / ${AR_MAG}（使い捨て）` : game.reloadT > 0 ? 'リロード中' : `PP8 / ${MAG}`;
+    const H = HELM[me.helmLv];
+    $('helmTxt').textContent = H ? `⛑ ${H.name}` : '⛑ なし';
+    $('helmfill').style.width = H ? (me.helmDur / H.dur * 100) + '%' : '0%';
     let c = '';
     const dead = !me.alive && !game.over;
     if (dead) c = `やられた…${game.killer ? `\n${game.killer} にやられた` : ''}\n${Math.max(1, Math.ceil(RESPAWN - (game.time - (game.deadAt || 0))))}`;
@@ -1499,13 +1715,13 @@ function step(dt) {
     $('centerText').textContent = c;
     const ke = dead && game.killerEnt;
     $('killerBox').hidden = !ke;
-    if (ke) { const x = $('killerFace').getContext('2d'); x.clearRect(0, 0, FS, FS); x.drawImage(ke.faceCanvas, 0, 0); }
+    if (ke) { const x = $('killerFace').getContext('2d'); x.clearRect(0, 0, FS, FS); x.drawImage(ke.faceCanvas, 0, 0, FS, FS); }
     // 照準の先の相手の顔と体力
     const te = game.lookAt && game.time - game.lookT < 1.2 && game.lookAt.alive && me.alive ? game.lookAt : null;
     $('tcard').hidden = !te;
     if (te) {
       const card = $('tcard'), x = card.querySelector('canvas').getContext('2d');
-      x.clearRect(0, 0, FS, FS); x.drawImage(te.faceCanvas, 0, 0);
+      x.clearRect(0, 0, FS, FS); x.drawImage(te.faceCanvas, 0, 0, FS, FS);
       card.querySelector('.tn').textContent = te.name; card.querySelector('.tbar div').style.width = te.hp + '%';
     }
     drawDmgDirs(dt, me);
@@ -1623,7 +1839,8 @@ function onHostData(conn, d) {
   } else if (d.t === 'fire') {
     const vec = (v) => Array.isArray(v) && v.length === 3 ? v.map((n) => num(n)) : null;
     const a = vec(d.a), b = vec(d.b); if (!a || !b) return;
-    hostFire(e, a, b, typeof d.tg === 'string' ? d.tg : null, !!d.h);
+    hostFire(e, a, b, typeof d.tg === 'string' ? d.tg : null, !!d.h, d.w === 'ar' ? 'ar' : 'p');
+    if (d.w === 'ar' && e.ar > 0) e.ar--;
   }
 }
 function onHostDrop(conn) {
@@ -1758,7 +1975,7 @@ function showResult() {
   list.forEach((e, i) => {
     const li = document.createElement('li'); if (i === 0) li.className = 'win';
     const rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = i + 1;
-    const c = document.createElement('canvas'); c.width = c.height = FS; c.getContext('2d').drawImage(e.faceCanvas, 0, 0);
+    const c = document.createElement('canvas'); c.width = c.height = FS; c.getContext('2d').drawImage(e.faceCanvas, 0, 0, FS, FS);
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = e.name + (e === game.me ? '（あなた）' : '');
     const kd = document.createElement('span'); kd.className = 'kd'; kd.innerHTML = `たおした <b>${e.kills}</b><br>やられた ${e.deaths}`;
     li.append(rk, c, nm, kd); ul.appendChild(li);
@@ -1803,7 +2020,7 @@ $('toTitleBtn').onclick = () => { leaveAll(); showTitle(); };
 showTitle();
 
 // テスト・デバッグ用
-window.__gb = { get game() { return game; }, net, startSolo, DIFF, refreshFace, settings };
+window.__gb = { get game() { return game; }, net, startSolo, DIFF, refreshFace, settings, handleEvent, setHelmetMesh };
 </script>
 </body>
 </html>
