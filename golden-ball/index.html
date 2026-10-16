@@ -220,6 +220,7 @@
 
     <span class="field">モード</span>
     <div class="seg3" id="modeSeg"></div>
+    <div class="seg2" id="ruleSeg" style="margin-top:6px"></div>
     <div id="soloTeamBox" style="margin-top:6px"></div>
     <span class="field">CPU のつよさ</span>
     <div class="seg" id="diffSeg"></div>
@@ -235,6 +236,7 @@
       <ul>
         <li>4人で撃ち合い！先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
         <li>👥 チーム戦（2対2）：赤チームと青チームに分かれて、先にチームで <b>12人</b> たおした方の勝ち。味方は撃っても当たりません。</li>
+        <li>🔪 接近戦のみ：銃なし！みんなナイフで始まり、宝箱から 🗡剣 や ✨🪚金のチェーンソー（15秒・最強）が出ます。</li>
         <li>👑 3対1（ボス戦）：1人側はボス。受けるダメージが 40% になる代わりに、3人を相手にします。</li>
         <li>まん中の台にある <b>ゴールデンボール</b> を取ると、銃が金色になって <b>一発でたおせる</b>！やられると台にもどります。</li>
         <li>白い箱（救急箱）で体力が回復。顔のキズも少しなおります。</li>
@@ -289,6 +291,7 @@
       <div class="seg" id="lobbyDiffSeg"></div>
       <span class="field">モード（チームは下のリストの色ボタンで入れかえ）</span>
       <div class="seg3" id="lobbyModeSeg"></div>
+      <div class="seg2" id="lobbyRuleSeg" style="margin-top:6px"></div>
       <span class="field">🎁 宝箱の中身（チェックしたものだけ出ます）</span>
       <div class="chips" id="lobbyLootChips"></div>
       <button class="primary" id="startBtn">スタート！</button>
@@ -428,6 +431,13 @@ const DIFF = {
   hard:   { label: 'むずかしい', react: 0.35, err: 0.028, gap: 0.45, range: 45, turn: 5.5, speed: 4.7 },
   agent:  { label: '008級',      react: 0.2,  err: 0.013, gap: 0.34, range: 60, turn: 8.0, speed: 5.2 },
 };
+// 接近戦の武器（右ほど強い）
+const MELEE = {
+  knife: { name: 'ナイフ', icon: '🔪', dmg: 25, head: 35, cd: 0.38, range: 1.7, arc: 0.6 },
+  sword: { name: '剣', icon: '🗡', dmg: 50, head: 65, cd: 0.55, range: 2.4, arc: 0.85 },
+  saw: { name: '金のチェーンソー', icon: '🪚', dmg: 16, head: 22, cd: 0.1, range: 2.1, arc: 0.8, fuel: 15 },
+};
+const RULES = { gun: '🔫 銃あり', melee: '🔪 接近戦のみ' };
 const MODES = { ffa: '個人戦', '2v2': 'チーム 2対2', '3v1': '3対1 ボス戦' };
 const TEAM_WIN = 12, BOSS_TAKE = 0.4;
 const TEAM_COLORS = ['#a8302a', '#2a4f9a'], TEAM_NAMES = ['🔴 赤チーム', '🔵 青チーム'];
@@ -783,7 +793,7 @@ const myName = () => cleanName($('nameInput').value) || 'ななしのスパイ';
 const settings = { sens: clamp(Number(store.get('gb_sens')) || 1, 0.2, 3), assist: store.get('gb_assist') !== '0',
   bgm: store.get('gb_bgm') == null ? 40 : clamp(Number(store.get('gb_bgm')) || 0, 0, 100),
   voice: store.get('gb_voice') || 'm2', loot: null, orient: store.get('gb_orient') === 'land' ? 'land' : 'auto' };
-const LOOT_KINDS = [['ar', '🔫 ライフル'], ['helm', '⛑ ヘルメット'], ['med', '💊 救急箱'], ['cloak', '🫥 マント'], ['mush', '🍄 キノコ'], ['wing', '🪶 羽根']];
+const LOOT_KINDS = [['ar', '🔫 ライフル／🗡 剣・🪚'], ['helm', '⛑ ヘルメット'], ['med', '💊 救急箱'], ['cloak', '🫥 マント'], ['mush', '🍄 キノコ'], ['wing', '🪶 羽根']];
 try { const l = JSON.parse(store.get('gb_loot') || 'null'); settings.loot = Array.isArray(l) ? l.filter((k) => LOOT_KINDS.some(([kk]) => kk === k)) : null; } catch (e) {}
 if (!settings.loot) settings.loot = LOOT_KINDS.map(([k]) => k);
 function renderLoot(id) {
@@ -827,6 +837,15 @@ $('hudSetBtn').onclick = openSettings;
 let diff = DIFF[store.get('gb_diff')] ? store.get('gb_diff') : 'normal';
 let gmode = MODES[store.get('gb_mode')] ? store.get('gb_mode') : 'ffa';
 let soloBoss = store.get('gb_boss') === '1';
+let rule = RULES[store.get('gb_rule')] ? store.get('gb_rule') : 'gun';
+function renderRule(segId, onPick) {
+  const seg = $(segId); seg.innerHTML = '';
+  for (const k of Object.keys(RULES)) {
+    const b = document.createElement('button'); b.textContent = RULES[k]; b.className = k === rule ? 'on' : '';
+    b.onclick = () => { rule = k; store.set('gb_rule', k); renderRule(segId, onPick); if (onPick) onPick(); };
+    seg.appendChild(b);
+  }
+}
 let teams = defaultTeams(gmode); // 4 つの席それぞれのチーム
 function renderMode(segId, onPick) {
   const seg = $(segId); seg.innerHTML = '';
@@ -857,7 +876,7 @@ function renderDiff(segId, onPick) {
   }
 }
 renderDiff('diffSeg');
-renderMode('modeSeg', renderSoloTeam); renderSoloTeam();
+renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderRule('ruleSeg');
 renderLoot('lootChips');
 
 // ---------------------------------------------------------------------
@@ -894,6 +913,11 @@ function buildSounds() {
     d[i] = (w - lp) * 0.8 * Math.exp(-t / 0.008) + Math.sin(2 * Math.PI * 1800 * t) * 0.4 * Math.exp(-t / 0.02) + Math.sin(2 * Math.PI * 3100 * t) * 0.25 * Math.exp(-t / 0.015); } });
   sounds.thunk = makeBuf(0.15, (d, sr) => { let lp = 0; for (let i = 0; i < d.length; i++) { const t = i / sr, w = Math.random() * 2 - 1; lp += (w - lp) * 0.08;
     d[i] = lp * 3 * Math.exp(-t / 0.03) + Math.sin(2 * Math.PI * 220 * t) * 0.4 * Math.exp(-t / 0.04); } });
+  // 接近戦：ヒュッ（空振り）／シャキーン（剣）／ブイーン（チェーンソー）／ザシュッ（当たった）
+  sounds.swish = makeBuf(0.2, (d, sr) => { let lp = 0; for (let i = 0; i < d.length; i++) { const t = i / sr, w = Math.random() * 2 - 1, k = 0.05 + 0.5 * (1 - t / 0.2); lp += (w - lp) * k; d[i] = (w - lp) * Math.sin(Math.PI * t / 0.2) * 0.9; } });
+  sounds.ring = makeBuf(0.5, (d, sr) => { for (let i = 0; i < d.length; i++) { const t = i / sr; d[i] = (Math.sin(2 * Math.PI * 2650 * t) * 0.5 + Math.sin(2 * Math.PI * 4020 * t) * 0.3) * Math.exp(-t / 0.12) * 0.6; } });
+  sounds.saw = makeBuf(0.14, (d, sr) => { let ph = 0; for (let i = 0; i < d.length; i++) { const t = i / sr; ph += (95 + 25 * Math.sin(t * 200)) / sr; const v = ((ph % 1) * 2 - 1) * 0.7 + (Math.random() * 2 - 1) * 0.35; d[i] = Math.tanh(v * 2.5) * 0.6 * Math.min(1, t / 0.01, (0.14 - t) / 0.02); } });
+  sounds.slash = makeBuf(0.25, (d, sr) => { let lp = 0, ph = 0; for (let i = 0; i < d.length; i++) { const t = i / sr, w = Math.random() * 2 - 1; lp += (w - lp) * 0.2; ph += 2 * Math.PI * (130 - 200 * t) / sr; d[i] = lp * 2.4 * Math.exp(-t / 0.05) + Math.sin(ph) * Math.exp(-t / 0.07) * 0.8; } });
   // 薬きょうが床で跳ねる音
   sounds.shell = makeBuf(0.4, (d, sr) => { for (let i = 0; i < d.length; i++) { const t = i / sr; let v = 0;
     for (const [t0, a] of [[0, 1], [0.09, 0.5], [0.16, 0.3]]) if (t >= t0) { const u = t - t0; v += (Math.sin(2 * Math.PI * 4200 * u) + Math.sin(2 * Math.PI * 6100 * u) * 0.6) * a * Math.exp(-u / 0.025); }
@@ -916,21 +940,25 @@ function audio() {
 }
 // 同時に鳴る音の数を制限する（多すぎるとスマホで音が割れたり止まったりする）
 let activeVoices = 0;
-const MAX_VOICES = 22;
-function track(node, sec) {
+const MAX_VOICES = 16;
+function track(node, sec, nodes) {
   activeVoices++; let done = false;
   const fin = () => { if (!done) { done = true; activeVoices--; } };
   node.onended = fin; setTimeout(fin, (sec + 0.3) * 1000);
+  if (nodes) setTimeout(() => dispose(nodes), (sec + 0.6) * 1000);
 }
+// 鳴り終わった音のつながりを外す。外さないと iPhone ではたまっていき、だんだんプツプツしてくる
+function dispose(nodes) { for (const n of nodes) { try { n.disconnect(); } catch (e) {} } }
 function playBuf(buf, vol, { lp = 20000, rev = 0.15, delay = 0, rate = 1 } = {}) {
   const ac = AC; if (!ac || !buf || vol < 0.04) return;
   if (activeVoices >= MAX_VOICES && vol < 0.6) return;
   const s = ac.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate;
-  track(s, buf.duration / rate + delay);
   const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
   const g = ac.createGain(); g.gain.value = vol;
   s.connect(f); f.connect(g); g.connect(sfxBus);
-  if (rev > 0) { const r = ac.createGain(); r.gain.value = rev * vol; f.connect(r); r.connect(revIn); }
+  const nodes = [s, f, g];
+  if (rev > 0) { const r = ac.createGain(); r.gain.value = rev * vol; f.connect(r); r.connect(revIn); nodes.push(r); }
+  track(s, buf.duration / rate + delay, nodes);
   s.start(ac.currentTime + delay);
 }
 // 銃声：遠いほど小さく、こもって、響きが多くなる
@@ -945,9 +973,10 @@ function sfx(type, vol = 1) {
   const ac = AC; if (!ac || vol < 0.03 || activeVoices >= MAX_VOICES + 6) return;
   activeVoices++; setTimeout(() => activeVoices--, 500);
   const t = ac.currentTime, out = ac.createGain(); out.gain.value = vol; out.connect(sfxBus);
-  const env = (node, a, dur) => { const g = ac.createGain(); g.gain.setValueAtTime(a, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); node.connect(g); g.connect(out); return g; };
+  const made = [out]; setTimeout(() => dispose(made), 1500);
+  const env = (node, a, dur) => { const g = ac.createGain(); g.gain.setValueAtTime(a, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); node.connect(g); g.connect(out); made.push(node, g); return g; };
   const osc = (type2, f0, f1, dur, a) => { const o = ac.createOscillator(); o.type = type2; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); env(o, a, dur); o.start(t); o.stop(t + dur + 0.02); };
-  const noise = (freq, q, dur, a) => { const s = ac.createBufferSource(); s.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; s.connect(f); env(f, a, dur); s.start(t); s.stop(t + dur + 0.02); };
+  const noise = (freq, q, dur, a) => { const s = ac.createBufferSource(); s.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; s.connect(f); env(f, a, dur); made.push(s); s.start(t); s.stop(t + dur + 0.02); };
   if (type === 'hit') { osc('square', 900, 600, 0.06, 0.25); }
   else if (type === 'hurt') { noise(300, 1, 0.25, 0.9); osc('sawtooth', 180, 90, 0.2, 0.3); }
   else if (type === 'die') { osc('sawtooth', 420, 60, 0.7, 0.35); }
@@ -993,7 +1022,10 @@ function sayTTS(text, g, spec, vol) {
 }
 // 声帯の音（のこぎり波）を、口の形の共鳴（フォルマント）に通して「うっ」「きゃっ」を作る
 function formantSay(sp, vol, fs) {
-  const ac = AC; if (!ac || vol < 0.04 || activeVoices >= MAX_VOICES) return;
+  if (!AC || vol < 0.04 || activeVoices >= MAX_VOICES) return;
+  const made = [], real = AC;
+  // 作った音をぜんぶ覚えておいて、あとでつながりを外す
+  const ac = new Proxy(real, { get(tg, k) { const v = tg[k]; return typeof v === 'function' && String(k).startsWith('create') ? (...a) => { const n = v.apply(tg, a); made.push(n); return n; } : typeof v === 'function' ? v.bind(tg) : v; } });
   const t = ac.currentTime + (sp.on ? 0.03 : 0), dur = sp.dur;
   const out = ac.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(vol, t + 0.02);
   out.gain.setValueAtTime(vol, t + dur * 0.6); out.gain.exponentialRampToValueAtTime(0.0001, t + dur); out.connect(sfxBus);
@@ -1011,7 +1043,7 @@ function formantSay(sp, vol, fs) {
   });
   if (sp.on) { const n = ac.createBufferSource(); n.buffer = noiseBuf; const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = sp.on[0]; bp.Q.value = 1.5;
     const ng = ac.createGain(); ng.gain.setValueAtTime(sp.on[1] * vol * 2, t - 0.03); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.03); n.connect(bp); bp.connect(ng); ng.connect(sfxBus); n.start(t - 0.03); n.stop(t + 0.05); }
-  src.start(t); src.stop(t + dur + 0.05); track(src, dur + 0.1);
+  src.start(t); src.stop(t + dur + 0.05); track(src, dur + 0.1, made);
 }
 function playVoice(e, dead, preview) {
   if (!AC) return;
@@ -1219,6 +1251,26 @@ function makeRifle(mat) {
   box(0.02, 0.04, 0.02, 0, 0.07, -0.18);               // 照星
   return g;
 }
+function makeMelee(kind) {
+  const g = new THREE.Group();
+  const steel = new THREE.MeshStandardMaterial({ color: '#d9dde3', metalness: 0.95, roughness: 0.18 });
+  const gold = new THREE.MeshStandardMaterial({ color: '#ffcc33', metalness: 0.9, roughness: 0.25, emissive: '#3a2600' });
+  const dark = new THREE.MeshStandardMaterial({ color: '#1d1b1a', roughness: 0.7 });
+  const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = true; g.add(b); return b; };
+  if (kind === 'knife') { box(0.03, 0.035, 0.11, dark, 0, 0, 0.02); box(0.06, 0.012, 0.012, steel, 0, 0, -0.04); box(0.012, 0.035, 0.17, steel, 0, 0.004, -0.13); }
+  else if (kind === 'sword') {
+    box(0.035, 0.035, 0.15, new THREE.MeshStandardMaterial({ color: '#5a3518', roughness: 0.8 }), 0, 0, 0.04);
+    box(0.2, 0.03, 0.035, gold, 0, 0, -0.04);
+    box(0.016, 0.06, 0.78, steel, 0, 0, -0.45);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.08, 4), steel); tip.rotation.x = -Math.PI / 2; tip.position.z = -0.88; g.add(tip);
+  } else {
+    box(0.13, 0.15, 0.26, gold, 0, 0, 0);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 16), dark); handle.position.set(0, 0.1, 0.05); g.add(handle);
+    box(0.02, 0.075, 0.48, steel, 0, -0.01, -0.34);
+    for (let i = 0; i < 10; i++) box(0.024, 0.012, 0.02, dark, 0, (i % 2 ? 0.04 : -0.06), -0.14 - i * 0.042);
+  }
+  return g;
+}
 function makeHelmet(lv) {
   const g = new THREE.Group(), H = HELM[lv];
   const mat = new THREE.MeshStandardMaterial({ color: H.color, roughness: lv === 3 ? 0.35 : 0.75, metalness: lv === 3 ? 0.45 : 0.1 });
@@ -1256,7 +1308,8 @@ function makeItemMesh(k) {
     const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.3, 14), new THREE.MeshStandardMaterial({ color: '#f4ecd8', roughness: 0.8 })); g.add(stem);
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d42a1e', roughness: 0.45 })); cap.position.y = 0.12; cap.scale.y = 0.8; g.add(cap);
     for (let i = 0; i < 7; i++) { const a = i * 2.4, r = i ? 0.2 : 0; const dot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshStandardMaterial({ color: '#fff' })); dot.position.set(Math.cos(a) * r, 0.12 + (i ? 0.15 : 0.24), Math.sin(a) * r); g.add(dot); }
-  } else if (k === 'wing') { const w = makeWings(); w.children.forEach((c) => { c.rotation.y = c.userData.sx * 0.5; }); g.add(w); }
+  } else if (k === 'sword' || k === 'saw') { const w = makeMelee(k); w.scale.setScalar(1.5); w.rotation.set(0.4, 0, Math.PI / 2); g.add(w); }
+  else if (k === 'wing') { const w = makeWings(); w.children.forEach((c) => { c.rotation.y = c.userData.sx * 0.5; }); g.add(w); }
   else { const m = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.5), new THREE.MeshLambertMaterial({ map: packTex })); g.add(m); }
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 6, 24), new THREE.MeshBasicMaterial({ color: ({ ar: '#ff9a3a', med: '#ff6060', cloak: '#b48cff', mush: '#ff3b8a', wing: '#ffffff' })[k] || '#7fb0ff' }));
   ring.rotation.x = Math.PI / 2; ring.position.y = -0.45; g.add(ring);
@@ -1289,6 +1342,16 @@ const gunMat = new THREE.MeshStandardMaterial({ color: '#222428', metalness: 0.6
   const hand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 0.12), new THREE.MeshLambertMaterial({ color: '#e0b48c' })); hand.position.set(0, -0.12, 0.08); viewGun.add(hand); }
 viewGun.scale.setScalar(0.6); viewGun.position.set(0.16, -0.14, -0.4); camera.add(viewGun);
 const viewRifle = makeRifle(); viewRifle.scale.setScalar(0.62); camera.add(viewRifle); viewRifle.visible = false;
+const viewMelee = {};
+const VIEW_MELEE = { // 手に持った時の見え方
+  knife: { p: [0.17, -0.16, -0.36], r: [0.35, 0.2, -0.25], s: 1 },
+  sword: { p: [0.22, -0.25, -0.42], r: [0.95, 0.2, -0.35], s: 0.75 },
+  saw: { p: [0.2, -0.24, -0.5], r: [0.45, 0.45, -0.15], s: 0.6 },
+};
+for (const k of Object.keys(MELEE)) {
+  const m = makeMelee(k); m.visible = false; camera.add(m); viewMelee[k] = m;
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshLambertMaterial({ color: '#e0b48c' })); hand.position.set(0, -0.02, 0.04); m.add(hand);
+}
 { const hand = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshLambertMaterial({ color: '#e0b48c' })); hand.position.set(0, -0.09, 0.1); viewRifle.add(hand);
   const hand2 = hand.clone(); hand2.position.set(-0.02, -0.06, -0.26); viewRifle.add(hand2); }
 const muzzle = new THREE.PointLight('#ffd27a', 0, 6); muzzle.position.set(0.16, -0.12, -0.7); camera.add(muzzle);
@@ -1343,6 +1406,8 @@ function buildChar(e) {
   }
   e.gun3 = add(new THREE.BoxGeometry(0.06, 0.09, 0.24), gunMat.clone(), 0, 0.8, 0.42);
   e.rifle3 = makeRifle(); e.rifle3.position.set(0, 0.78, 0.38); e.rifle3.rotation.y = Math.PI; body.add(e.rifle3); e.rifle3.visible = false;
+  e.melee3 = {};
+  for (const k of Object.keys(MELEE)) { const m = makeMelee(k); m.position.set(0.05, 0.8, 0.36); m.rotation.y = Math.PI; m.visible = false; body.add(m); e.melee3[k] = m; }
   // 頭
   e.head = new THREE.Group(); e.head.position.set(0, HEAD_Y, 0); body.add(e.head);
   add(new THREE.SphereGeometry(HEAD_R, 32, 24), e.skinMat, 0, 0, 0, e.head);
@@ -1427,7 +1492,7 @@ function makeEnt(info, mode = 'ffa') {
     hp: MAX_HP, alive: false, kills: 0, deaths: 0, respawnAt: 0, swell: 1, thumbs: [], faceKey: '', fall: 0, walk: 0,
     helmLv: 0, helmDur: 0, ar: 0, voice: VOICES[info.voice] ? info.voice : 'm1',
     y: 0, ry: 0, ty: 0, vy: 0, bigS: 1, cloakT: 0, mushT: 0, wingT: 0, fxBits: 0, invShown: false, swellV: [1, 1, 1],
-    team: mode === 'ffa' ? info.slot : num(info.team, 0), boss: false,
+    team: mode === 'ffa' ? info.slot : num(info.team, 0), boss: false, mw: 'knife', sawT: 0, swingT: 0,
     // CPU 用
     path: [], repath: 0, target: null, seenAt: 0, nextFire: 0, ammo: MAG, strafe: 1, strafeT: 0, huntId: null,
   };
@@ -1454,7 +1519,7 @@ function startGame(cfg) {
   endGame(true);
   audio(); bgmStart();
   game = {
-    ents: [], byId: new Map(), me: null, diff: cfg.diff, mode: MODES[cfg.gmode] ? cfg.gmode : 'ffa', time: 0, timeLeft: MATCH_TIME, gold: null, over: false,
+    ents: [], byId: new Map(), me: null, diff: cfg.diff, mode: MODES[cfg.gmode] ? cfg.gmode : 'ffa', rule: RULES[cfg.rule] ? cfg.rule : 'gun', time: 0, timeLeft: MATCH_TIME, gold: null, over: false,
     packs: PACKS.map(([x, z]) => ({ x, z, avail: true, at: 0 })), snapT: 0, sendT: 0,
     chests: CHESTS.map(([x, z]) => ({ x, z, open: false, at: 0 })), items: [], itemSeq: 0, loot: Array.isArray(cfg.loot) ? cfg.loot : settings.loot,
     ammo: MAG, reloadT: 0, nextFire: 0, recoil: 0, hurt: 0, hitMark: 0, deathCam: 0, lastShotGold: false,
@@ -1471,6 +1536,7 @@ function startGame(cfg) {
   // 味方の名前は壁ごしにも見える／敵は見えない
   for (const e of game.ents) e.tag.material.depthTest = !(game.me && e !== game.me && isAlly(e, game.me));
   $('teamScore').hidden = game.mode === 'ffa';
+  $('reloadBtn').hidden = game.rule === 'melee';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
   tryLockLandscape();
   if (isTouch && !view.rot && innerHeight > innerWidth) feed('📱 横にすると遊びやすいよ（横にならない時は ⚙設定 →「横画面に固定」）');
@@ -1540,7 +1606,7 @@ function hostDamage(v, a, head, w) {
   if (!game || game.over || !v.alive) return;
   if (v !== a && isAlly(v, a)) return; // 味方には当たらない
   const gold = game.gold === a.id;
-  let dmg = gold ? 999 : w === 'ar' ? (head ? AR_HEAD : AR_BODY) : head ? DMG_HEAD : DMG_BODY;
+  let dmg = gold ? 999 : MELEE[w] ? (head ? MELEE[w].head : MELEE[w].dmg) : w === 'ar' ? (head ? AR_HEAD : AR_BODY) : head ? DMG_HEAD : DMG_BODY;
   let broke = 0, blocked = 0;
   if (head && !gold && v.helmLv) { // ヘルメットが頭へのダメージを減らし、そのぶんすり減る
     const H = HELM[v.helmLv], ab = Math.min(v.helmDur, dmg * H.red);
@@ -1569,7 +1635,7 @@ function hostFire(shooter, a, b, tgId, head, w) {
 }
 // 宝箱の中身（オプションでチェックしたものだけ）
 function rollLoot() {
-  const W = { ar: [['ar', 30]], helm: [['h1', 13], ['h2', 10], ['h3', 7]], med: [['med', 10]], cloak: [['cloak', 11]], mush: [['mush', 12]], wing: [['wing', 11]] };
+  const W = { ar: game.rule === 'melee' ? [['sword', 24], ['saw', 9]] : [['ar', 30]], helm: [['h1', 13], ['h2', 10], ['h3', 7]], med: [['med', 10]], cloak: [['cloak', 11]], mush: [['mush', 12]], wing: [['wing', 11]] };
   const list = game.loot.flatMap((k) => W[k] || []), total = list.reduce((a, [, w]) => a + w, 0);
   if (!total) return null;
   let r = Math.random() * total;
@@ -1578,6 +1644,8 @@ function rollLoot() {
 }
 function wantsItem(e, k) {
   if (k === 'ar') return e.ar < 30;
+  if (k === 'sword') return e.mw === 'knife';
+  if (k === 'saw') return e.mw !== 'saw';
   if (k === 'med') return e.hp < MAX_HP;
   if (k === 'mush') return true; // ハズレ：近づいたら食べちゃう
   if (k === 'cloak' || k === 'wing') return !fxOn(e, k);
@@ -1631,7 +1699,7 @@ function hostTick(dt) {
     game.snapT = 1 / 15;
     broadcast({ t: 'snap', tl: Math.round(game.timeLeft * 10) / 10, g: game.gold, pk: game.packs.map((p) => (p.avail ? 1 : 0)),
       ch: game.chests.map((c) => (c.open ? 1 : 0)), it: game.items.map((it) => [it.iid, it.k, it.x, it.z]),
-      e: game.ents.map((e) => [e.id, +e.x.toFixed(2), +e.z.toFixed(2), +e.yaw.toFixed(3), +e.pitch.toFixed(3), e.hp, e.alive ? 1 : 0, e.kills, e.deaths, e.helmLv, Math.round(e.helmDur), e.ar, +(e.y || 0).toFixed(2),
+      e: game.ents.map((e) => [e.id, +e.x.toFixed(2), +e.z.toFixed(2), +e.yaw.toFixed(3), +e.pitch.toFixed(3), e.hp, e.alive ? 1 : 0, e.kills, e.deaths, e.helmLv, Math.round(e.helmDur), e.ar, +(e.y || 0).toFixed(2), e.mw, +(e.sawT || 0).toFixed(1),
         (fxOn(e, 'cloak') ? 1 : 0) | (fxOn(e, 'mush') ? 2 : 0) | (fxOn(e, 'wing') ? 4 : 0)]) });
   }
 }
@@ -1661,10 +1729,21 @@ function botThink(b, dt) {
     // 左右にちょこちょこ動く
     b.strafeT -= dt; if (b.strafeT <= 0) { b.strafeT = 0.6 + Math.random() * 1.2; b.strafe = Math.random() < 0.5 ? -1 : 1; }
     const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw), rx = -fz, rz = fx;
+    if (game.rule === 'melee') { // 接近戦：まっすぐ近づいて切りつける
+      const M = MELEE[b.mw] || MELEE.knife;
+      const close = bd < M.range * 0.8;
+      mx = fx * (close ? 0.1 : 1) + rx * b.strafe * (close ? 0.5 : 0.25); mz = fz * (close ? 0.1 : 1) + rz * b.strafe * (close ? 0.5 : 0.25);
+      const slow = ({ easy: 1.9, normal: 1.35, hard: 1.1, agent: 1 })[game.diff] || 1.3;
+      if (bd <= M.range && game.time - b.seenAt > P.react * 0.6 && Math.abs(wrapAng(want - b.yaw)) < M.arc && game.time >= b.nextFire) {
+        b.nextFire = game.time + M.cd * slow * (0.9 + Math.random() * 0.3);
+        hostMelee(b, tg.id, Math.random() < (game.diff === 'agent' ? 0.4 : 0.2));
+      }
+      tg = null; // 下の銃の処理はしない
+    }
     const keep = bd > 14 ? 0.7 : bd < 5 ? -0.6 : 0;
-    mx = fx * keep + rx * b.strafe * 0.8; mz = fz * keep + rz * b.strafe * 0.8;
+    if (tg) { mx = fx * keep + rx * b.strafe * 0.8; mz = fz * keep + rz * b.strafe * 0.8; }
     if (b.reloadAt && game.time >= b.reloadAt) { b.reloadAt = 0; b.ammo = MAG; }
-    if (!b.reloadAt && game.time - b.seenAt > P.react && Math.abs(wrapAng(want - b.yaw)) < 0.2 && game.time >= b.nextFire) {
+    if (tg && !b.reloadAt && game.time - b.seenAt > P.react && Math.abs(wrapAng(want - b.yaw)) < 0.2 && game.time >= b.nextFire) {
       const useAR = b.ar > 0 && game.gold !== b.id;
       b.nextFire = game.time + (useAR ? Math.min(P.gap * 0.4, 0.16) : P.gap) * (0.8 + Math.random() * 0.4);
       const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
@@ -1705,7 +1784,7 @@ function botThink(b, dt) {
   }
   const L = Math.hypot(mx, mz);
   if (L > 0.01) {
-    const sp = P.speed * dt / Math.max(1, L), ox = b.x, oz = b.z;
+    const sp = P.speed * (game.rule === 'melee' ? 1.12 : 1) * dt / Math.max(1, L), ox = b.x, oz = b.z;
     b.x += mx * sp; b.z += mz * sp; collide(b);
     if (Math.hypot(b.x - ox, b.z - oz) < sp * 0.2) { b.strafe *= -1; b.repath = 0; }
   }
@@ -1718,6 +1797,17 @@ function botThink(b, dt) {
 function handleEvent(ev) {
   if (!game) return;
   const me = game.me;
+  if (ev.t === 'swing') {
+    const e = game.byId.get(ev.id); if (!e || e === me) return;
+    e.swingT = 1; meleeSound(MELEE[ev.w] ? ev.w : 'knife', !!ev.hit, volAt(e.rx, e.rz));
+    return;
+  }
+  if (ev.t === 'wpn') {
+    const e = game.byId.get(ev.id); if (!e) return;
+    e.mw = MELEE[ev.mw] ? ev.mw : 'knife'; e.sawT = 0;
+    if (e === me) feed('🪚 チェーンソーの燃料が切れた！ナイフにもどった');
+    return;
+  }
   if (ev.t === 'shot') {
     if (me && ev.id === me.id) return;
     const s = game.byId.get(ev.id);
@@ -1743,7 +1833,7 @@ function handleEvent(ev) {
   } else if (ev.t === 'kill') {
     const k = game.byId.get(ev.k), v = game.byId.get(ev.v); if (!v) return;
     v.alive = false; v.hp = 0; v.fall = 0; v.helmLv = 0; v.helmDur = 0; v.ar = 0; setHelmetMesh(v);
-    v.cloakT = v.mushT = v.wingT = 0; v.fxBits = 0;
+    v.cloakT = v.mushT = v.wingT = 0; v.fxBits = 0; v.mw = 'knife'; v.sawT = 0;
     playVoice(v, true);
     if (net.isHost) { /* kills/deaths は hostDamage で数えた */ } else { v.deaths++; if (k && k !== v) k.kills++; }
     sfx('die', 0.7 * volAt(v.rx, v.rz));
@@ -1758,7 +1848,7 @@ function handleEvent(ev) {
     e.life = num(ev.n, (e.life || 0) + 1);
     e.hp = MAX_HP; e.alive = true; e.fall = 0; e.path = []; e.target = null; e.huntId = null; e.ammo = MAG; e.reloadAt = 0;
     e.helmLv = 0; e.helmDur = 0; e.ar = 0; setHelmetMesh(e);
-    e.y = e.ry = e.ty = 0; e.vy = 0; e.cloakT = e.mushT = e.wingT = 0; e.fxBits = 0;
+    e.y = e.ry = e.ty = 0; e.vy = 0; e.cloakT = e.mushT = e.wingT = 0; e.fxBits = 0; e.mw = 'knife'; e.sawT = 0;
     if (e === me) { game.ammo = MAG; game.reloadT = 0; }
     refreshFace(e);
   } else if (ev.t === 'gold') {
@@ -1780,6 +1870,8 @@ function handleEvent(ev) {
     const e = game.byId.get(ev.id); if (!e) return;
     const k = String(ev.k);
     if (k === 'ar') e.ar = AR_MAG;
+    else if (k === 'sword') e.mw = 'sword';
+    else if (k === 'saw') { e.mw = 'saw'; e.sawT = MELEE.saw.fuel; }
     else if (k === 'med') { e.hp = num(ev.hp, e.hp); refreshFace(e); }
     else if (k[0] === 'h') { const lv = clamp(Number(k[1]) || 1, 1, 3); e.helmLv = lv; e.helmDur = HELM[lv].dur; setHelmetMesh(e); }
     else if (FX_DUR[k]) e[k + 'T'] = game.time + FX_DUR[k];
@@ -1798,7 +1890,7 @@ function handleEvent(ev) {
   }
 }
 function itemName(k) {
-  return ({ ar: 'アサルトライフル（40発）', med: '救急箱', cloak: '透明マント', mush: 'キノコ', wing: '羽根' })[k] || `ヘルメット ${(HELM[Number(String(k)[1])] || HELM[1]).name}`;
+  return ({ ar: 'アサルトライフル（40発）', sword: '🗡 剣', saw: '✨🪚 金のチェーンソー（15秒）', med: '救急箱', cloak: '透明マント', mush: 'キノコ', wing: '羽根' })[k] || `ヘルメット ${(HELM[Number(String(k)[1])] || HELM[1]).name}`;
 }
 function applySnap(s) {
   if (!game || !Array.isArray(s.e)) return;
@@ -1806,10 +1898,11 @@ function applySnap(s) {
   game.gold = s.g || null;
   if (Array.isArray(s.pk)) s.pk.forEach((v, i) => { if (game.packs[i]) game.packs[i].avail = !!v; });
   if (Array.isArray(s.ch)) s.ch.forEach((v, i) => { if (game.chests[i]) game.chests[i].open = !!v; });
-  if (Array.isArray(s.it)) game.items = s.it.filter((r) => Array.isArray(r) && ['ar', 'med', 'h1', 'h2', 'h3', 'cloak', 'mush', 'wing'].includes(r[1])).map(([iid, k, x, z]) => ({ iid: num(iid), k, x: num(x), z: num(z) }));
+  if (Array.isArray(s.it)) game.items = s.it.filter((r) => Array.isArray(r) && ['ar', 'med', 'h1', 'h2', 'h3', 'cloak', 'mush', 'wing', 'sword', 'saw'].includes(r[1])).map(([iid, k, x, z]) => ({ iid: num(iid), k, x: num(x), z: num(z) }));
   for (const row of s.e) {
     const e = game.byId.get(row[0]); if (!e) continue;
-    const [, x, z, yaw, pitch, hp, alive, k, d, hl, hd, ar, y, fx] = row;
+    const [, x, z, yaw, pitch, hp, alive, k, d, hl, hd, ar, y, mw, sawT, fx] = row;
+    if (MELEE[mw]) e.mw = mw; e.sawT = num(sawT);
     e.fxBits = num(fx);
     if (e !== game.me) { e.ty = num(y); e.y = e.ty; }
     e.helmLv = clamp(num(hl), 0, 3); e.helmDur = num(hd); setHelmetMesh(e);
@@ -1827,6 +1920,7 @@ function applySnap(s) {
 function tryFire() {
   const me = game.me;
   if (!me || !me.alive || game.over) return;
+  if (game.rule === 'melee') { tryMelee(); return; }
   const gold = game.gold === me.id, useAR = !gold && me.ar > 0;
   if (game.time < game.nextFire) return;
   if (!useAR) {
@@ -1868,8 +1962,50 @@ function aimTarget(me, cone) {
   }
   return best;
 }
+// 接近戦：ねらった先 or 前の近くにいる敵に当てる（少しあまめの判定）
+function meleeTarget(att, M, useRender) {
+  const ex = (e) => (useRender ? e.rx : e.x), ez = (e) => (useRender ? e.rz : e.z);
+  const o = { x: att.x, y: (att.y || 0) + EYE, z: att.z };
+  const d = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(att.pitch, att.yaw, 0, 'YXZ'));
+  const r = rayShot(o, d, att, useRender);
+  if (r.ent && r.dist <= M.range + 0.3 && isEnemy(r.ent, att)) return { e: r.ent, head: r.head };
+  let best = null, bd = M.range + 0.45;
+  for (const e of game.ents) {
+    if (!isEnemy(e, att) || !e.alive) continue;
+    const dx = ex(e) - att.x, dz = ez(e) - att.z, dist = Math.hypot(dx, dz);
+    if (dist > bd || Math.abs(((useRender ? e.ry : e.y) || 0) - (att.y || 0)) > 1.8) continue;
+    if (Math.abs(wrapAng(Math.atan2(-dx, -dz) - att.yaw)) > M.arc) continue;
+    bd = dist; best = { e, head: false };
+  }
+  return best;
+}
+function tryMelee() {
+  const me = game.me, w = MELEE[me.mw] ? me.mw : 'knife', M = MELEE[w];
+  if (game.time < game.nextFire) return;
+  game.nextFire = game.time + M.cd; game.swing = 1; me.swingT = 1;
+  const hit = meleeTarget(me, M, true);
+  meleeSound(w, !!hit, 1);
+  if (net.isHost) hostMelee(me, hit ? hit.e.id : null, hit && hit.head);
+  else sendHost({ t: 'melee', tg: hit ? hit.e.id : null, h: hit && hit.head ? 1 : 0 });
+}
+function meleeSound(w, hit, vol) {
+  if (w === 'saw') playBuf(sounds.saw, 0.55 * vol, { rev: 0.05, rate: 0.95 + Math.random() * 0.1 });
+  else { playBuf(sounds.swish, 0.55 * vol, { rev: 0.1, rate: w === 'sword' ? 0.75 : 1.2 }); if (w === 'sword') playBuf(sounds.ring, 0.3 * vol, { rev: 0.3 }); }
+  if (hit) playBuf(sounds.slash, 0.8 * vol, { rev: 0.15, delay: 0.04, rate: 0.9 + Math.random() * 0.2 });
+}
+function hostMelee(att, tgId, head) {
+  if (!game || game.over || !att.alive) return;
+  const w = MELEE[att.mw] ? att.mw : 'knife', M = MELEE[w];
+  if (att !== game.me && game.time < (att.meleeNext || 0)) return; // 連打しすぎは無視
+  att.meleeNext = game.time + M.cd * 0.75;
+  const tg = tgId ? game.byId.get(tgId) : null;
+  const ok = tg && tg.alive && isEnemy(tg, att) && Math.hypot(tg.x - att.x, tg.z - att.z) <= M.range + 1.5;
+  emit({ t: 'swing', id: att.id, w, hit: ok ? 1 : 0 });
+  if (w === 'saw') { att.sawT -= M.cd; if (att.sawT <= 0) emit({ t: 'wpn', id: att.id, mw: 'knife' }); }
+  if (ok) hostDamage(tg, att, !!head, w);
+}
 function startReload() {
-  if (!game || game.reloadT > 0 || (game.me && game.me.ar > 0 && game.gold !== game.me.id)) return;
+  if (!game || game.rule === 'melee' || game.reloadT > 0 || (game.me && game.me.ar > 0 && game.gold !== game.me.id)) return;
   const gold = game.me && game.gold === game.me.id;
   if (!gold && game.ammo >= MAG) return;
   game.reloadT = gold ? GOLD_RELOAD : RELOAD; sfx('reload', 0.7);
@@ -2051,7 +2187,7 @@ function frame(now) {
 function idleCam(t) {
   camera.position.set(Math.sin(t * 0.1) * 18, 6, Math.cos(t * 0.1) * 18);
   camera.lookAt(0, 1, 0);
-  viewGun.visible = false; viewRifle.visible = false;
+  viewGun.visible = false; viewRifle.visible = false; for (const k of Object.keys(MELEE)) viewMelee[k].visible = false;
 }
 function step(dt) {
   game.time += dt;
@@ -2065,7 +2201,8 @@ function step(dt) {
     if (k.ArrowLeft) me.yaw += 2.4 * dt; if (k.ArrowRight) me.yaw -= 2.4 * dt;
     const L = Math.hypot(f, s); if (L > 1) { f /= L; s /= L; }
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = -fz, rz = fx;
-    me.x += (fx * f + rx * s) * SPEED * dt; me.z += (fz * f + rz * s) * SPEED * dt;
+    const spd = SPEED * (game.rule === 'melee' ? 1.12 : 1); // 接近戦は少し速く走れる
+    me.x += (fx * f + rx * s) * spd * dt; me.z += (fz * f + rz * s) * spd * dt;
     collide(me);
     me.rx = me.x; me.rz = me.z; me.walk += Math.hypot(f, s) * dt * 9;
     // エイムお助け：照準が相手の近くにあると、ちょっとずつ吸いつく
@@ -2138,8 +2275,14 @@ function step(dt) {
     if (inv !== e.invShown) { e.invShown = inv; setOpacity(e.body, inv ? 0.07 : 1); }
     e.tag.visible = e.alive && !inv; e.halo.visible = game.gold === e.id && e.alive;
     if (e.halo.visible) e.halo.position.y = 2.3 + extra + Math.sin(game.time * 4) * 0.06;
-    const rifle = e.ar > 0 && game.gold !== e.id;
-    e.rifle3.visible = rifle; e.gun3.visible = !rifle;
+    const melee = game.rule === 'melee';
+    const rifle = !melee && e.ar > 0 && game.gold !== e.id;
+    e.rifle3.visible = rifle; e.gun3.visible = !rifle && !melee;
+    e.swingT = Math.max(0, (e.swingT || 0) - dt * (e.mw === 'saw' ? 3 : 4));
+    for (const k of Object.keys(MELEE)) {
+      const m = e.melee3[k]; m.visible = melee && e.mw === k;
+      if (m.visible) { const sw = Math.sin(e.swingT * Math.PI); m.rotation.set(-sw * 1.2, Math.PI + sw * 0.8, 0); if (k === 'saw' && e.swingT > 0) m.position.y = 0.8 + (Math.random() - 0.5) * 0.02; }
+    }
     e.gun3.material.color.set(game.gold === e.id ? '#ffcc33' : '#222428');
   }
   // カメラ
@@ -2147,18 +2290,30 @@ function step(dt) {
     if (me.alive) {
       const bob = me.y > 0.01 ? 0 : Math.sin(me.walk) * 0.012;
       camera.position.set(me.x, me.y + EYE + bob, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
-      const rifle = me.ar > 0 && game.gold !== me.id;
-      viewGun.visible = !rifle; viewRifle.visible = rifle;
+      const melee = game.rule === 'melee';
+      const rifle = !melee && me.ar > 0 && game.gold !== me.id;
+      viewGun.visible = !rifle && !melee; viewRifle.visible = rifle;
+      for (const k of Object.keys(MELEE)) viewMelee[k].visible = melee && me.mw === k;
     } else {
       game.deathCam = Math.min(1, game.deathCam + dt * 1.5);
       camera.position.set(me.rx, (me.y || 0) + EYE - game.deathCam * 1.0, me.rz); camera.rotation.set(me.pitch - game.deathCam * 0.6, me.yaw, game.deathCam * 0.7);
-      viewGun.visible = false; viewRifle.visible = false;
+      viewGun.visible = false; viewRifle.visible = false; for (const k of Object.keys(MELEE)) viewMelee[k].visible = false;
     }
   }
   game.recoil = Math.max(0, game.recoil - dt * 8);
   const rl = game.reloadT > 0 ? Math.sin(Math.min(1, 1 - game.reloadT / RELOAD) * Math.PI) : 0;
   viewGun.position.set(0.16, -0.14 - rl * 0.1 + (me ? Math.sin(me.walk * 0.5) * 0.008 : 0), -0.4 + game.recoil * 0.04);
   viewGun.rotation.x = game.recoil * 0.25 - rl * 0.8;
+  // 接近戦の振り
+  game.swing = Math.max(0, (game.swing || 0) - dt * (me && me.mw === 'saw' ? 3 : 4.5));
+  { const sw = Math.sin((game.swing || 0) * Math.PI), saw = me && me.mw === 'saw';
+    for (const k of Object.keys(MELEE)) {
+      const m = viewMelee[k]; if (!m.visible) continue;
+      const B = VIEW_MELEE[k], buzz = saw && game.swing > 0 ? (Math.random() - 0.5) * 0.012 : 0;
+      m.scale.setScalar(B.s);
+      m.position.set(B.p[0] - sw * (saw ? 0 : 0.16) + buzz, B.p[1] + sw * 0.04 + buzz, B.p[2] - sw * 0.1);
+      m.rotation.set(B.r[0] - sw * (saw ? 0.1 : 1.0), B.r[1] + sw * (saw ? 0 : 0.8), B.r[2] - sw * (saw ? 0 : 0.6));
+    } }
   viewRifle.position.set(0.17, -0.17 + (me ? Math.sin(me.walk * 0.5) * 0.008 : 0), -0.42 + game.recoil * 0.05); viewRifle.rotation.x = game.recoil * 0.06;
   const iGold = me && game.gold === me.id;
   gunMat.color.set(iGold ? '#ffcc33' : '#222428'); gunMat.emissive.set(iGold ? '#5a3c00' : '#000000');
@@ -2170,9 +2325,17 @@ function step(dt) {
   $('fireBtn').classList.toggle('gold', !!iGold);
   if (me) {
     $('hpfill').style.width = me.hp + '%'; $('hptext').textContent = `体力 ${me.hp}  ☠ ${me.deaths}`;
-    const rifle = !iGold && me.ar > 0;
-    $('ammoNum').textContent = rifle ? me.ar : game.reloadT > 0 ? '…' : game.ammo;
-    $('ammoSub').textContent = iGold ? '✨ ゴールデンガン（一発でたおせる）' : rifle ? `アサルトライフル / ${AR_MAG}（使い捨て）` : game.reloadT > 0 ? 'リロード中' : `PP8 / ${MAG}`;
+    const rifle = !iGold && me.ar > 0 && game.rule !== 'melee';
+    if (game.rule === 'melee') {
+      const M = MELEE[me.mw] || MELEE.knife;
+      $('ammoNum').textContent = M.icon;
+      $('ammoSub').textContent = (iGold ? '✨ 一撃でたおせる！ ' : '') + M.name + (me.mw === 'saw' ? `（燃料 ${Math.max(0, Math.ceil(me.sawT))}秒）` : '');
+      $('fireBtn').textContent = M.icon;
+    } else {
+      $('ammoNum').textContent = rifle ? me.ar : game.reloadT > 0 ? '…' : game.ammo;
+      $('ammoSub').textContent = iGold ? '✨ ゴールデンガン（一発でたおせる）' : rifle ? `アサルトライフル / ${AR_MAG}（使い捨て）` : game.reloadT > 0 ? 'リロード中' : `PP8 / ${MAG}`;
+      $('fireBtn').textContent = '🔫';
+    }
     const H = HELM[me.helmLv];
     $('helmTxt').textContent = H ? `⛑ ${H.name}` : '⛑ なし';
     $('helmfill').style.width = H ? (me.helmDur / H.dur * 100) + '%' : '0%';
@@ -2184,7 +2347,7 @@ function step(dt) {
     let c = '';
     const dead = !me.alive && !game.over;
     if (dead) c = `やられた…${game.killer ? `\n${game.killer} にやられた` : ''}\n${Math.max(1, Math.ceil(RESPAWN - (game.time - (game.deadAt || 0))))}`;
-    else if (game.time < 2.5) c = game.mode === 'ffa' ? 'ミッション開始！\nゴールデンボールを手に入れろ'
+    else if (game.time < 2.5) c = game.mode === 'ffa' ? (game.rule === 'melee' ? 'ミッション開始！\n🔪 接近戦のみ！宝箱で武器を強くしろ' : 'ミッション開始！\nゴールデンボールを手に入れろ')
       : `ミッション開始！\nあなたは ${me.boss ? '👑 ボス' : TEAM_NAMES[me.team ? 1 : 0]}`;
     $('centerText').textContent = c;
     const ke = dead && game.killerEnt;
@@ -2291,7 +2454,7 @@ function hostRoom(retry = 0) {
     conn.on('close', drop); conn.on('error', drop);
   });
 }
-function lobbyMsg() { return { t: 'lobby', code: net.code, diff, gmode, teams, members: net.members.map((m) => ({ id: m.id, name: m.name, face: m.face, voice: m.voice })), playing: !!(game && !game.over) }; }
+function lobbyMsg() { return { t: 'lobby', code: net.code, diff, gmode, teams, rule, members: net.members.map((m) => ({ id: m.id, name: m.name, face: m.face, voice: m.voice })), playing: !!(game && !game.over) }; }
 function onHostData(conn, d) {
   if (!d || typeof d !== 'object') return;
   net.seen.set(conn.peer, Date.now());
@@ -2315,6 +2478,8 @@ function onHostData(conn, d) {
     const a = vec(d.a), b = vec(d.b); if (!a || !b) return;
     hostFire(e, a, b, typeof d.tg === 'string' ? d.tg : null, !!d.h, d.w === 'ar' ? 'ar' : 'p');
     if (d.w === 'ar' && e.ar > 0) e.ar--;
+  } else if (d.t === 'melee' && game.rule === 'melee') {
+    hostMelee(e, typeof d.tg === 'string' ? d.tg : null, !!d.h);
   }
 }
 function onHostDrop(conn) {
@@ -2365,6 +2530,7 @@ function onClientData(d) {
     net.members = Array.isArray(d.members) ? d.members.slice(0, 4) : []; if (DIFF[d.diff]) diff = d.diff;
     net.playing = !!d.playing;
     if (MODES[d.gmode]) gmode = d.gmode;
+    if (RULES[d.rule]) rule = d.rule;
     if (Array.isArray(d.teams) && d.teams.length === 4) teams = d.teams.map((t) => clamp(num(t), 0, 3));
     if (!game) showLobby(); else renderLobby();
     return;
@@ -2377,19 +2543,19 @@ function onClientData(d) {
     });
     if (MODES[d.gmode]) gmode = d.gmode;
     if (!roster.some((r) => r.id === net.myId)) return; // 試合中に入った人は次から
-    startGame({ roster, diff: d.diff, gmode: MODES[d.gmode] ? d.gmode : 'ffa', loot: Array.isArray(d.loot) ? d.loot.filter((k) => LOOT_KINDS.some(([kk]) => kk === k)) : settings.loot });
+    startGame({ roster, diff: d.diff, gmode: MODES[d.gmode] ? d.gmode : 'ffa', rule: RULES[d.rule] ? d.rule : 'gun', loot: Array.isArray(d.loot) ? d.loot.filter((k) => LOOT_KINDS.some(([kk]) => kk === k)) : settings.loot });
     return;
   }
   if (d.t === 'tolobby') { endGame(true); showLobby(); return; }
   if (d.t === 'snap') { applySnap(d); return; }
-  if (['shot', 'hit', 'kill', 'spawn', 'gold', 'heal', 'botify', 'end'].includes(d.t)) handleEvent(d);
+  if (['shot', 'hit', 'kill', 'spawn', 'gold', 'heal', 'botify', 'end', 'chest', 'loot', 'swing', 'wpn'].includes(d.t)) handleEvent(d);
 }
 
 // ---------------------------------------------------------------------
 //  画面の切りかえ
 // ---------------------------------------------------------------------
 function hideAll() { for (const id of ['title', 'online', 'lobby', 'result']) $(id).hidden = true; }
-function showTitle() { hideAll(); $('title').hidden = false; drawPreview(); renderDiff('diffSeg'); renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderLoot('lootChips'); }
+function showTitle() { hideAll(); $('title').hidden = false; drawPreview(); renderDiff('diffSeg'); renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderRule('ruleSeg'); renderLoot('lootChips'); }
 function showOnline() { hideAll(); $('online').hidden = false; }
 function inviteUrl() { return `${location.origin}${location.pathname}?room=${net.code}`; }
 function inviteText() { return `「naoの008ゴールデンボール」で勝負しよう！🔫✨\n合言葉：${net.code}\n${inviteUrl()}`; }
@@ -2398,7 +2564,7 @@ function renderLobby() {
   if ($('lobby').hidden) return;
   $('lobbyCode').textContent = net.code;
   $('hostOnly').hidden = !net.isHost;
-  if (net.isHost) { renderDiff('lobbyDiffSeg', () => broadcast(lobbyMsg())); renderMode('lobbyModeSeg', () => { broadcast(lobbyMsg()); renderLobby(); }); renderLoot('lobbyLootChips'); }
+  if (net.isHost) { renderDiff('lobbyDiffSeg', () => broadcast(lobbyMsg())); renderMode('lobbyModeSeg', () => { broadcast(lobbyMsg()); renderLobby(); }); renderRule('lobbyRuleSeg', () => broadcast(lobbyMsg())); renderLoot('lobbyLootChips'); }
   const ul = $('memberList'); ul.innerHTML = '';
   for (let i = 0; i < 4; i++) {
     const m = net.members[i], li = document.createElement('li');
@@ -2451,8 +2617,8 @@ function hostStart() {
     if (m) roster.push({ id: m.id, name: m.name, bot: false, slot: i, face: m.face, voice: m.voice || 'm1', team });
     else roster.push({ id: 'cpu' + i, name: CPU_NAMES[i], bot: true, slot: i, face: null, voice: cpuVoice, team });
   }
-  if (net.mode === 'host') broadcast({ t: 'start', diff, gmode, loot: settings.loot, roster: roster.map(({ id, name, bot, voice, team }) => ({ id, name, bot, voice, team })) });
-  startGame({ roster, diff, gmode, loot: settings.loot });
+  if (net.mode === 'host') broadcast({ t: 'start', diff, gmode, rule, loot: settings.loot, roster: roster.map(({ id, name, bot, voice, team }) => ({ id, name, bot, voice, team })) });
+  startGame({ roster, diff, gmode, rule, loot: settings.loot });
 }
 function startSolo() {
   leaveAll();
