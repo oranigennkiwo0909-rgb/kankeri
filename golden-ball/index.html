@@ -438,7 +438,7 @@
   <div id="stampPanel" hidden><div class="stamps" id="hudStampBtns"></div></div>
   <div id="hudBtns"><button id="stampBtn">💬</button><button id="hudModBtn" hidden>🛡 管理</button><button id="hudSetBtn">⚙ 設定</button><button id="menuBtn">やめる</button></div>
 </div>
-<div id="lockhint" hidden><div>クリックでスタート<br><span class="mini">WASD：移動 / マウス：狙う / クリック：撃つ / R：リロード / スペース：ジャンプ / 1〜8：スタンプ / Esc：止める</span></div></div>
+<div id="lockhint" hidden><div>クリックでスタート<br><span class="mini">WASD：移動 / マウス：狙う / クリック：撃つ / R：リロード / スペース：ジャンプ / 1〜0：スタンプ / Esc：止める</span></div></div>
 <div id="touch" hidden>
   <div id="stickZone"></div>
   <div id="lookZone"></div>
@@ -1707,6 +1707,7 @@ function renderBoard() {
 const STAMPS = {
   hello: 'よろしくお願いします🙏', gg: 'お疲れ様でした✨', leave: '途中でぬけます🙇', w: 'www',
   help: '助けてー😭', nice: 'ナイス！👍', sorry: 'ごめん🙏', go: 'いくぞ！🔥',
+  thanks: 'ありがとう😊', again: 'もう一回！🔁',
 };
 function renderStampButtons(id) {
   const box = $(id); box.innerHTML = '';
@@ -2203,8 +2204,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !e.repeat) { input.jumpPress = true; if (game) e.preventDefault(); }
   input.keys[e.code] = true;
   if (e.code === 'KeyR' && game) startReload();
-  const dn = /^Digit([1-8])$/.exec(e.code); // パソコンは 1〜8 キーでスタンプ
-  if (dn && (game || !$('lobby').hidden) && document.activeElement.tagName !== 'INPUT') sendStamp(Object.keys(STAMPS)[Number(dn[1]) - 1]);
+  const dn = /^Digit([0-9])$/.exec(e.code); // パソコンは 1〜9・0 キーでスタンプ
+  if (dn && (game || !$('lobby').hidden) && document.activeElement.tagName !== 'INPUT') sendStamp(Object.keys(STAMPS)[(Number(dn[1]) + 9) % 10]);
 });
 addEventListener('keyup', (e) => { input.keys[e.code] = false; });
 addEventListener('blur', () => { input.keys = {}; input.fire = false; });
