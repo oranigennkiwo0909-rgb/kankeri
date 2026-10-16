@@ -144,7 +144,7 @@
   #killerFace { width: 110px; height: 110px; border-radius: 14px; border: 3px solid var(--red); }
   #feed canvas { width: 20px; height: 20px; border-radius: 4px; vertical-align: middle; margin: 0 3px; }
   .seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  #lockhint { position: fixed; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); cursor: pointer; }
+  #lockhint { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); cursor: pointer; }
   #lockhint div { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; text-align: center; line-height: 1.8; }
 
   /* ---- タッチ操作 ---- */
@@ -193,6 +193,14 @@
   .modact button { padding: 6px 8px; font-size: 12px; }
   .modact .danger { background: #6e231a; border-color: #ff8a7a; }
   #lobbyCode { cursor: pointer; }
+  /* スタンプ */
+  .stamps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+  .stamps button { padding: 8px 2px; font-size: 12px; line-height: 1.3; border-radius: 12px; touch-action: manipulation; }
+  .stamplog { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .stamplog:empty { display: none; }
+  .stamplog div { background: rgba(255,255,255,.06); border-radius: 10px; padding: 4px 10px; }
+  #stampPanel { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); width: min(420px, calc(100% - 24px));
+    background: rgba(18,20,16,.92); border: 1px solid var(--line); border-radius: 14px; padding: 4px 8px 8px; pointer-events: auto; }
   .vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .vgrid button { padding: 8px 4px; font-size: 13px; }
 
@@ -275,6 +283,7 @@
         <li>最大6人で撃ち合い！（人数は 4・5・6 人から選べて、足りない分は CPU）先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
         <li>👥 チーム戦（2対2）：赤チームと青チームに分かれて、先にチームで <b>12人</b> たおした方の勝ち。味方は撃っても当たりません。</li>
         <li>🔪 接近戦のみ：銃なし！みんなナイフで始まり、宝箱から 🗡剣 や ✨🪚金のチェーンソー（15秒・最強）が出ます。</li>
+        <li>💬 スタンプ：試合中は 💬 ボタン、作戦会議室は下のボタンから。「よろしくお願いします」「www」などを頭の上に出せます。</li>
         <li>🛡 配信する時は、作戦会議室の「メンバー管理」でキック・ブロック・顔写真をかくす・締め切りができます。合言葉はタップでかくせます。</li>
         <li>👑 3対1（ボス戦）：1人側はボス。受けるダメージが 40% になる代わりに、3人を相手にします。</li>
         <li>まん中の台にある <b>ゴールデンボール</b> を取ると、銃が金色になって <b>一発でたおせる</b>！やられると台にもどります。</li>
@@ -325,6 +334,8 @@
       <button id="shareBtn">ほかのアプリで送る</button>
     </div>
     <ul class="members" id="memberList"></ul>
+    <div class="stamplog" id="lobbyStamps"></div>
+    <div class="stamps" id="lobbyStampBtns"></div>
     <div id="hostOnly">
       <span class="field">足りない人数の CPU のつよさ</span>
       <div class="seg" id="lobbyDiffSeg"></div>
@@ -424,9 +435,10 @@
   <div id="tcard" hidden><canvas width="128" height="128"></canvas><div><div class="tn"></div><div class="tbar"><div></div></div></div></div>
   <div id="center"><div id="centerText"></div><div id="killerBox" hidden><canvas id="killerFace" width="128" height="128"></canvas></div></div>
   <div id="ammo"><b id="ammoNum">8</b><small id="ammoSub">PP8</small></div>
-  <div id="hudBtns"><button id="hudModBtn" hidden>🛡 管理</button><button id="hudSetBtn">⚙ 設定</button><button id="menuBtn">やめる</button></div>
+  <div id="stampPanel" hidden><div class="stamps" id="hudStampBtns"></div></div>
+  <div id="hudBtns"><button id="stampBtn">💬</button><button id="hudModBtn" hidden>🛡 管理</button><button id="hudSetBtn">⚙ 設定</button><button id="menuBtn">やめる</button></div>
 </div>
-<div id="lockhint" hidden><div>クリックでスタート<br><span class="mini">WASD：移動 / マウス：狙う / クリック：撃つ / R：リロード / Esc：止める</span></div></div>
+<div id="lockhint" hidden><div>クリックでスタート<br><span class="mini">WASD：移動 / マウス：狙う / クリック：撃つ / R：リロード / スペース：ジャンプ / 1〜8：スタンプ / Esc：止める</span></div></div>
 <div id="touch" hidden>
   <div id="stickZone"></div>
   <div id="lookZone"></div>
@@ -1691,6 +1703,59 @@ function renderBoard() {
   const t = Math.max(0, Math.ceil(game.timeLeft)); $('timer').textContent = `⏱ ${(t / 60) | 0}:${String(t % 60).padStart(2, '0')}  🎯${game.mode === 'ffa' ? WIN_KILLS : teamWin(game.ents.length)}`;
   if (game.mode !== 'ffa') $('teamScore').textContent = game.mode === '3v1' ? `${game.ents.length - 1}人 ${teamScore(0)} : ${teamScore(1)} 👑` : `🔴 ${teamScore(0)} : ${teamScore(1)} 🔵`;
 }
+// ---- スタンプ（決まった言葉だけ。配信でも安心） ----
+const STAMPS = {
+  hello: 'よろしくお願いします🙏', gg: 'お疲れ様でした✨', leave: '途中でぬけます🙇', w: 'www',
+  help: '助けてー😭', nice: 'ナイス！👍', sorry: 'ごめん🙏', go: 'いくぞ！🔥',
+};
+function renderStampButtons(id) {
+  const box = $(id); box.innerHTML = '';
+  for (const [k, text] of Object.entries(STAMPS)) {
+    const b = document.createElement('button'); b.textContent = text;
+    b.onclick = () => { sendStamp(k); if (id === 'hudStampBtns') $('stampPanel').hidden = true; };
+    box.appendChild(b);
+  }
+}
+let stampT = 0;
+function sendStamp(k) {
+  const now = performance.now(); if (now - stampT < 1500) return; stampT = now; // 連打防止
+  if (net.mode === 'client') sendHost({ t: 'stamp', k });
+  else hostStamp(net.myId, k);
+}
+function hostStamp(id, k) {
+  if (!STAMPS[k]) return;
+  const now = performance.now(), last = net.stampT.get(id) || 0;
+  if (now - last < 1200) return; net.stampT.set(id, now);
+  const msg = { t: 'stamp', id, k };
+  showStamp(msg); if (net.mode === 'host') broadcast(msg);
+}
+function stampName(id) {
+  const e = game && game.byId.get(id); if (e) return e.name;
+  const m = net.members.find((x) => x.id === id); return m ? m.name : '？';
+}
+function showStamp(d) {
+  const text = STAMPS[d.k]; if (!text) return;
+  if (AC) playBuf(sounds.clack, 0.35, { rate: 2.2, rev: 0 });
+  // 作戦会議室の欄（最新 4 つ）
+  const log = $('lobbyStamps'), row = document.createElement('div'); row.textContent = `${stampName(d.id)}：${text}`;
+  log.prepend(row); while (log.children.length > 4) log.lastChild.remove();
+  if (!game) return;
+  const e = game.byId.get(d.id); if (!e) return;
+  feed([e, ` ${e.name}：${text}`]);
+  // 頭の上に吹き出し
+  if (e.bubble) e.root.remove(e.bubble);
+  const c = document.createElement('canvas'); c.width = 512; c.height = 112; const x = c.getContext('2d');
+  x.font = 'bold 40px sans-serif'; const w = Math.min(500, x.measureText(text).width + 48);
+  x.fillStyle = 'rgba(255,255,255,.95)'; x.strokeStyle = 'rgba(0,0,0,.5)'; x.lineWidth = 4;
+  const L = (512 - w) / 2; x.beginPath(); x.moveTo(L + 24, 6); x.arcTo(L + w, 6, L + w, 84, 24); x.arcTo(L + w, 84, L, 84, 24); x.lineTo(270, 84); x.lineTo(256, 106); x.lineTo(242, 84);
+  x.arcTo(L, 84, L, 6, 24); x.arcTo(L, 6, L + w, 6, 24); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = '#1a1a1a'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 256, 46, 470);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
+  sp.scale.set(2.6, 0.57, 1); e.root.add(sp); e.bubble = sp; e.bubbleT = game.time;
+}
+$('stampBtn').onclick = () => { $('stampPanel').hidden = !$('stampPanel').hidden; };
+renderStampButtons('lobbyStampBtns'); renderStampButtons('hudStampBtns');
+
 function feed(parts) {
   const f = $('feed'), d = document.createElement('div');
   for (const p of Array.isArray(parts) ? parts : [parts]) {
@@ -2138,6 +2203,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !e.repeat) { input.jumpPress = true; if (game) e.preventDefault(); }
   input.keys[e.code] = true;
   if (e.code === 'KeyR' && game) startReload();
+  const dn = /^Digit([1-8])$/.exec(e.code); // パソコンは 1〜8 キーでスタンプ
+  if (dn && (game || !$('lobby').hidden) && document.activeElement.tagName !== 'INPUT') sendStamp(Object.keys(STAMPS)[Number(dn[1]) - 1]);
 });
 addEventListener('keyup', (e) => { input.keys[e.code] = false; });
 addEventListener('blur', () => { input.keys = {}; input.fire = false; });
@@ -2397,6 +2464,11 @@ function step(dt) {
     const inv = fxOn(e, 'cloak') && e.alive;
     if (inv !== e.invShown) { e.invShown = inv; setOpacity(e.body, inv ? 0.07 : 1); }
     e.tag.visible = e.alive && !inv; e.halo.visible = game.gold === e.id && e.alive;
+    if (e.bubble) { // スタンプの吹き出し（3 秒）
+      const age = game.time - e.bubbleT;
+      if (age > 3.2) { e.root.remove(e.bubble); e.bubble.material.map.dispose(); e.bubble.material.dispose(); e.bubble = null; }
+      else { e.bubble.position.y = top + 0.75 + Math.min(age, 0.2); e.bubble.material.opacity = Math.min(1, (3.2 - age) / 0.5); e.bubble.visible = !inv; }
+    }
     e.badge.visible = e.alive && !inv;
     if (e.halo.visible) e.halo.position.y = top + 0.4 + Math.sin(game.time * 4) * 0.06;
     const melee = game.rule === 'melee';
@@ -2537,7 +2609,7 @@ function p2pOptions() {
   if (q.get('peerhost')) Object.assign(o, { host: q.get('peerhost'), port: Number(q.get('peerport') || 9000), path: '/', secure: false });
   return o;
 }
-const net = { roomBlocks: new Map(), mode: 'solo', isHost: true, myId: 'me', peer: null, conns: new Map(), hostConn: null, code: '', members: [], joinTimer: null, seen: new Map(), hostSeen: 0 };
+const net = { stampT: new Map(), roomBlocks: new Map(), mode: 'solo', isHost: true, myId: 'me', peer: null, conns: new Map(), hostConn: null, code: '', members: [], joinTimer: null, seen: new Map(), hostSeen: 0 };
 // 生きてるよ合図：タブを閉じた人に早く気づくため
 setInterval(() => {
   const now = Date.now();
@@ -2556,6 +2628,7 @@ function leaveAll() {
   endGame(true);
   clearTimeout(net.joinTimer);
   try { if (net.peer) net.peer.destroy(); } catch (e) {}
+  $('lobbyStamps').innerHTML = ''; $('stampPanel').hidden = true;
   net.peer = null; net.conns.clear(); net.seen.clear(); net.hostSeen = 0; net.hostConn = null; net.locked = false; net.mode = 'solo'; net.isHost = true; net.myId = 'me'; net.members = [];
 }
 function hostRoom(retry = 0) {
@@ -2596,6 +2669,7 @@ function onHostData(conn, d) {
     broadcast(lobbyMsg()); renderLobby();
     return;
   }
+  if (d.t === 'stamp') { if (net.conns.has(conn.peer)) hostStamp(conn.peer, String(d.k)); return; }
   if (!game || !net.conns.has(conn.peer)) return;
   const e = game.byId.get(conn.peer); if (!e || e.isBot) return;
   if (d.t === 'me') {
@@ -2745,6 +2819,7 @@ function onClientData(d) {
   }
   if (d.t === 'tolobby') { endGame(true); showLobby(); return; }
   if (d.t === 'snap') { applySnap(d); return; }
+  if (d.t === 'stamp') { showStamp(d); return; }
   if (['shot', 'hit', 'kill', 'spawn', 'gold', 'heal', 'botify', 'end', 'chest', 'loot', 'swing', 'wpn'].includes(d.t)) handleEvent(d);
 }
 
