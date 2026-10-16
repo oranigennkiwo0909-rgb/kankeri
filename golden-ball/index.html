@@ -188,6 +188,10 @@
   .members li.t0 { border-left: 5px solid #c0392b; } .members li.t1 { border-left: 5px solid #2e6bd1; }
   .sc.t0 { border-left: 4px solid #e0503f; } .sc.t1 { border-left: 4px solid #4a86ea; }
   #teamScore { font-size: 16px; font-weight: 900; text-shadow: 0 1px 3px #000; text-align: right; }
+  .modact { display: flex; gap: 4px; flex: none; }
+  .modact button { padding: 6px 8px; font-size: 12px; }
+  .modact .danger { background: #6e231a; border-color: #ff8a7a; }
+  #lobbyCode { cursor: pointer; }
   .vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .vgrid button { padding: 8px 4px; font-size: 13px; }
 
@@ -254,6 +258,7 @@
         <li>4人で撃ち合い！先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
         <li>👥 チーム戦（2対2）：赤チームと青チームに分かれて、先にチームで <b>12人</b> たおした方の勝ち。味方は撃っても当たりません。</li>
         <li>🔪 接近戦のみ：銃なし！みんなナイフで始まり、宝箱から 🗡剣 や ✨🪚金のチェーンソー（15秒・最強）が出ます。</li>
+        <li>🛡 配信する時は、作戦会議室の「メンバー管理」でキック・ブロック・顔写真をかくす・締め切りができます。合言葉はタップでかくせます。</li>
         <li>👑 3対1（ボス戦）：1人側はボス。受けるダメージが 40% になる代わりに、3人を相手にします。</li>
         <li>まん中の台にある <b>ゴールデンボール</b> を取ると、銃が金色になって <b>一発でたおせる</b>！やられると台にもどります。</li>
         <li>白い箱（救急箱）で体力が回復。顔のキズも少しなおります。</li>
@@ -296,7 +301,7 @@
   <div class="card">
     <h2>作戦会議室</h2>
     <div class="sub" style="margin:0">合言葉</div>
-    <div class="code" id="lobbyCode">-----</div>
+    <div class="code" id="lobbyCode" title="タップで表示・非表示">-----</div>
     <button class="line" id="lineBtn">LINE で友達をさそう</button>
     <div class="row2" style="margin-top:8px">
       <button id="copyBtn">リンクをコピー</button>
@@ -311,10 +316,24 @@
       <div class="seg2" id="lobbyRuleSeg" style="margin-top:6px"></div>
       <span class="field">🎁 宝箱の中身（チェックしたものだけ出ます）</span>
       <div class="chips" id="lobbyLootChips"></div>
+      <button class="secondary" id="modBtn">🛡 メンバー管理（キック・ブロック・締め切り）</button>
       <button class="primary" id="startBtn">スタート！</button>
     </div>
     <p class="status" id="lobbyStatus"></p>
     <button class="secondary" id="leaveBtn">部屋をでる</button>
+  </div>
+</div>
+
+<!-- ===== メンバー管理（ホスト用・配信向け） ===== -->
+<div class="overlay" id="modPanel" hidden style="z-index: 32">
+  <div class="card">
+    <h2>🛡 メンバー管理</h2>
+    <div class="seg2"><button id="lockBtn">🔒 新しい人を入れない</button><button id="hideCodeBtn">🙈 合言葉をかくす</button></div>
+    <ul class="members" id="modList"></ul>
+    <span class="field">⛔ ブロック中の人（このスマホに保存）</span>
+    <ul class="members" id="blockList"></ul>
+    <p class="mini">キック：部屋から外します（また入れます）。ブロック：外して、同じスマホからは入れなくします。顔をかくす：その人の写真を全員の画面で似顔絵にします。</p>
+    <button class="primary" id="modClose">とじる</button>
   </div>
 </div>
 
@@ -376,7 +395,7 @@
   <div id="tcard" hidden><canvas width="128" height="128"></canvas><div><div class="tn"></div><div class="tbar"><div></div></div></div></div>
   <div id="center"><div id="centerText"></div><div id="killerBox" hidden><canvas id="killerFace" width="128" height="128"></canvas></div></div>
   <div id="ammo"><b id="ammoNum">8</b><small id="ammoSub">PP8</small></div>
-  <div id="hudBtns"><button id="hudSetBtn">⚙ 設定</button><button id="menuBtn">やめる</button></div>
+  <div id="hudBtns"><button id="hudModBtn" hidden>🛡 管理</button><button id="hudSetBtn">⚙ 設定</button><button id="menuBtn">やめる</button></div>
 </div>
 <div id="lockhint" hidden><div>クリックでスタート<br><span class="mini">WASD：移動 / マウス：狙う / クリック：撃つ / R：リロード / Esc：止める</span></div></div>
 <div id="touch" hidden>
@@ -777,6 +796,8 @@ function drawFace(ctx, who, hp, dead) {
 // ---------------------------------------------------------------------
 //  自分のプロフィール（名前・顔）
 // ---------------------------------------------------------------------
+// このスマホの目印（ブロック用）。名前を変えても同じ
+let deviceId = store.get('gb_uid'); if (!deviceId) { deviceId = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); store.set('gb_uid', deviceId); }
 const prof = { name: cleanName(store.get('gb_name')) || '', face: store.get('gb_face') || null, faceImg: null, seed: hashStr('me' + (store.get('gb_seed') || Math.random())) };
 if (!store.get('gb_seed')) store.set('gb_seed', String(prof.seed));
 let srcImg = null, crop = { zoom: 1, ox: 0, oy: 0 };
@@ -835,7 +856,7 @@ const myName = () => cleanName($('nameInput').value) || 'ななしのスパイ';
 // 設定（端末ごとに保存）
 const settings = { sens: clamp(Number(store.get('gb_sens')) || 1, 0.2, 3), assist: store.get('gb_assist') !== '0',
   bgm: store.get('gb_bgm') == null ? 40 : clamp(Number(store.get('gb_bgm')) || 0, 0, 100),
-  voice: store.get('gb_voice') || 'm2', loot: null, orient: store.get('gb_orient') === 'land' ? 'land' : 'auto' };
+  voice: store.get('gb_voice') || 'm2', loot: null, hideCode: store.get('gb_hidecode') === '1', orient: store.get('gb_orient') === 'land' ? 'land' : 'auto' };
 const LOOT_KINDS = [['ar', '🔫 ライフル／🗡 剣・🪚'], ['helm', '⛑ ヘルメット'], ['med', '💊 救急箱'], ['cloak', '🫥 マント'], ['mush', '🍄 キノコ'], ['wing', '🪶 羽根']];
 try { const l = JSON.parse(store.get('gb_loot') || 'null'); settings.loot = Array.isArray(l) ? l.filter((k) => LOOT_KINDS.some(([kk]) => kk === k)) : null; } catch (e) {}
 if (!settings.loot) settings.loot = LOOT_KINDS.map(([k]) => k);
@@ -1591,6 +1612,7 @@ function startGame(cfg) {
   for (const e of game.ents) { e.tag.material.depthTest = e.badge.material.depthTest = !(game.me && e !== game.me && isAlly(e, game.me)); drawBadge(e); }
   $('teamScore').hidden = game.mode === 'ffa';
   $('reloadBtn').hidden = game.rule === 'melee';
+  $('hudModBtn').hidden = net.mode !== 'host';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
   tryLockLandscape(); tryFullscreen();
   if (isTouch && !view.rot && innerHeight > innerWidth) feed('📱 横にすると遊びやすいよ（横にならない時は ⚙設定 →「横画面に固定」）');
@@ -2081,7 +2103,7 @@ addEventListener('mousemove', (e) => {
 });
 $('lockhint').addEventListener('click', () => { audio(); canvas.requestPointerLock && canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', updateLockHint);
-function updateLockHint() { $('lockhint').hidden = isTouch || !game || game.over || !$('settings').hidden || layoutEditing || document.pointerLockElement === canvas; }
+function updateLockHint() { $('lockhint').hidden = isTouch || !game || game.over || !$('settings').hidden || !$('modPanel').hidden || layoutEditing || document.pointerLockElement === canvas; }
 
 // ---- ボタン配置（ドラッグで移動・大きさ変更。端末ごとに保存） ----
 const LAYOUT_IDS = ['fireBtn', 'reloadBtn', 'jumpBtn'];
@@ -2488,9 +2510,10 @@ function leaveAll() {
   endGame(true);
   clearTimeout(net.joinTimer);
   try { if (net.peer) net.peer.destroy(); } catch (e) {}
-  net.peer = null; net.conns.clear(); net.seen.clear(); net.hostSeen = 0; net.hostConn = null; net.mode = 'solo'; net.isHost = true; net.myId = 'me'; net.members = [];
+  net.peer = null; net.conns.clear(); net.seen.clear(); net.hostSeen = 0; net.hostConn = null; net.locked = false; net.mode = 'solo'; net.isHost = true; net.myId = 'me'; net.members = [];
 }
 function hostRoom(retry = 0) {
+  net.bye = false;
   if (!window.Peer) { $('onlineStatus').textContent = '通信の部品が読みこめませんでした。電波のよい所でページを開きなおしてね'; return; }
   leaveAll();
   net.mode = 'host'; net.isHost = true;
@@ -2515,11 +2538,14 @@ function onHostData(conn, d) {
   if (!d || typeof d !== 'object') return;
   net.seen.set(conn.peer, Date.now());
   if (d.t === 'hello') {
+    const uid = String(d.uid || '').slice(0, 40);
+    if (uid && blockedList().some((b) => b.uid === uid)) { try { conn.send({ t: 'blocked' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
+    if (net.locked && !net.members.some((m) => m.id === conn.peer)) { try { conn.send({ t: 'locked' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
     if (net.members.length >= 4) { try { conn.send({ t: 'full' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
     const face = typeof d.face === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(d.face) && d.face.length < 150000 ? d.face : null;
     net.conns.set(conn.peer, conn);
     net.members = net.members.filter((m) => m.id !== conn.peer);
-    net.members.push({ id: conn.peer, name: cleanName(d.name) || 'ななしのスパイ', face, voice: VOICES[d.voice] ? d.voice : 'm1' });
+    net.members.push({ id: conn.peer, name: cleanName(d.name) || 'ななしのスパイ', face, voice: VOICES[d.voice] ? d.voice : 'm1', uid });
     broadcast(lobbyMsg()); renderLobby();
     return;
   }
@@ -2549,6 +2575,7 @@ function onHostDrop(conn) {
 }
 
 function joinRoom(code) {
+  net.bye = false;
   if (!window.Peer) { $('onlineStatus').textContent = '通信の部品が読みこめませんでした。電波のよい所でページを開きなおしてね'; return; }
   code = String(code || '').replace(/\D/g, '').slice(0, 5);
   if (code.length !== 5) { $('onlineStatus').textContent = '合言葉は 5 けたの数字だよ'; showOnline(); return; }
@@ -2561,9 +2588,9 @@ function joinRoom(code) {
   peer.on('open', (id) => {
     net.myId = id;
     const conn = peer.connect(PEER_PREFIX + code, { reliable: true }); net.hostConn = conn;
-    conn.on('open', () => conn.send({ t: 'hello', name: myName(), face: prof.face, voice: settings.voice }));
+    conn.on('open', () => conn.send({ t: 'hello', name: myName(), face: prof.face, voice: settings.voice, uid: deviceId }));
     conn.on('data', (d) => { if (d && d.t === 'lobby') welcomed = true; onClientData(d); });
-    const lost = () => { if (net.hostConn !== conn) return; hostLost(); };
+    const lost = () => { if (net.hostConn !== conn || net.bye) return; hostLost(); };
     conn.on('close', lost); conn.on('error', lost);
   });
   peer.on('error', (err) => {
@@ -2572,6 +2599,64 @@ function joinRoom(code) {
     else if (!welcomed) { $('onlineStatus').textContent = `つながりませんでした（${err.type}）`; leaveAll(); }
   });
 }
+// ---- メンバー管理（ホストだけ） ----
+function blockedList() { try { const l = JSON.parse(store.get('gb_blocked') || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+function saveBlocked(l) { store.set('gb_blocked', JSON.stringify(l.slice(-50))); }
+function kickMember(id, block) {
+  const m = net.members.find((x) => x.id === id); if (!m || !net.isHost || id === net.myId) return;
+  const conn = net.conns.get(id);
+  try { conn && conn.send({ t: 'kicked' }); } catch (e) {}
+  if (block && m.uid) { saveBlocked([...blockedList().filter((b) => b.uid !== m.uid), { uid: m.uid, name: m.name, at: Date.now() }]); }
+  setTimeout(() => { try { conn && conn.close(); } catch (e) {} }, 300);
+  net.conns.delete(id);
+  net.members = net.members.filter((x) => x.id !== id);
+  if (game) { const e = game.byId.get(id); if (e && !e.isBot) emit({ t: 'botify', id }); }
+  broadcast(lobbyMsg()); renderLobby(); renderMod();
+  feedOrStatus(`${block ? '⛔' : '👢'} ${m.name} を${block ? 'ブロック' : 'キック'}しました`);
+}
+function hideFaceOf(e) { e.face = null; e.faceImg = null; sampleColors(e); refreshFace(e, true); }
+function hideMemberFace(id) {
+  const m = net.members.find((x) => x.id === id); if (!m) return;
+  m.face = null; m.faceHidden = true;
+  if (game) { const e = game.byId.get(id); if (e) hideFaceOf(e); broadcast({ t: 'noface', id }); }
+  broadcast(lobbyMsg()); renderLobby(); renderMod();
+  feedOrStatus(`🙈 ${m.name} の顔写真をかくしました`);
+}
+function feedOrStatus(t) { if (game) feed(t); else $('lobbyStatus').textContent = t; }
+function renderMod() {
+  if ($('modPanel').hidden) return;
+  $('lockBtn').className = net.locked ? 'on' : ''; $('lockBtn').textContent = net.locked ? '🔒 締め切り中（タップで解除）' : '🔓 新しい人を入れない';
+  $('hideCodeBtn').className = settings.hideCode ? 'on' : ''; $('hideCodeBtn').textContent = settings.hideCode ? '🙈 合言葉をかくし中' : '👁 合言葉をかくす';
+  const ul = $('modList'); ul.innerHTML = '';
+  const others = net.members.filter((m) => m.id !== net.myId);
+  if (!others.length) { const li = document.createElement('li'); li.textContent = 'まだだれも入っていません'; ul.appendChild(li); }
+  for (const m of others) {
+    const li = document.createElement('li');
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = m.name + (m.faceHidden ? '（顔かくし中）' : '');
+    const act = document.createElement('span'); act.className = 'modact';
+    const mk = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = fn; act.appendChild(b); };
+    if (!m.faceHidden) mk('🙈 顔', '', () => hideMemberFace(m.id));
+    mk('👢 キック', 'danger', () => { if (confirm(`${m.name} を部屋から外しますか？`)) kickMember(m.id, false); });
+    mk('⛔ ブロック', 'danger', () => { if (confirm(`${m.name} をブロックしますか？\n（このスマホで作った部屋には、もう入れなくなります）`)) kickMember(m.id, true); });
+    li.append(nm, act); ul.appendChild(li);
+  }
+  const bl = $('blockList'); bl.innerHTML = '';
+  const list = blockedList();
+  if (!list.length) { const li = document.createElement('li'); li.textContent = 'なし'; bl.appendChild(li); }
+  for (const b of list) {
+    const li = document.createElement('li');
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = b.name || '（なまえなし）';
+    const un = document.createElement('button'); un.textContent = '解除'; un.onclick = () => { saveBlocked(blockedList().filter((x) => x.uid !== b.uid)); renderMod(); };
+    li.append(nm, un); bl.appendChild(li);
+  }
+}
+function openMod() { if (document.pointerLockElement) document.exitPointerLock(); $('modPanel').hidden = false; renderMod(); updateLockHint(); }
+$('modBtn').onclick = openMod; $('hudModBtn').onclick = openMod;
+$('modClose').onclick = () => { $('modPanel').hidden = true; updateLockHint(); };
+$('lockBtn').onclick = () => { net.locked = !net.locked; renderMod(); renderLobby(); };
+$('hideCodeBtn').onclick = () => { settings.hideCode = !settings.hideCode; store.set('gb_hidecode', settings.hideCode ? '1' : '0'); renderMod(); renderLobby(); };
+$('lobbyCode').onclick = () => { settings.hideCode = !settings.hideCode; store.set('gb_hidecode', settings.hideCode ? '1' : '0'); renderLobby(); };
+
 function hostLost() {
   const wasGame = !!game;
   leaveAll(); showTitle();
@@ -2581,6 +2666,9 @@ function onClientData(d) {
   if (!d || typeof d !== 'object') return;
   net.hostSeen = Date.now();
   if (d.t === 'full') { $('onlineStatus').textContent = 'この部屋はもう 4 人いっぱいです'; leaveAll(); showOnline(); return; }
+  if (d.t === 'blocked' || d.t === 'locked') { $('onlineStatus').textContent = d.t === 'locked' ? 'この部屋は今、新しい人を入れていません' : 'この部屋には入れません'; net.bye = true; leaveAll(); showOnline(); return; }
+  if (d.t === 'kicked') { net.bye = true; leaveAll(); showTitle(); setTimeout(() => alert('部屋をつくった人によって、部屋から外されました'), 50); return; }
+  if (d.t === 'noface') { const e = game && game.byId.get(d.id); if (e && e !== game.me) hideFaceOf(e); return; }
   if (d.t === 'lobby') {
     clearTimeout(net.joinTimer);
     net.members = Array.isArray(d.members) ? d.members.slice(0, 4) : []; if (DIFF[d.diff]) diff = d.diff;
@@ -2618,7 +2706,7 @@ function inviteText() { return `「naoの008ゴールデンボール」で勝負
 function showLobby() { hideAll(); $('lobby').hidden = false; renderLobby(); }
 function renderLobby() {
   if ($('lobby').hidden) return;
-  $('lobbyCode').textContent = net.code;
+  $('lobbyCode').textContent = settings.hideCode ? '●●●●●' : net.code; // 配信で映らないようにかくせる
   $('hostOnly').hidden = !net.isHost;
   if (net.isHost) { renderDiff('lobbyDiffSeg', () => broadcast(lobbyMsg())); renderMode('lobbyModeSeg', () => { broadcast(lobbyMsg()); renderLobby(); }); renderRule('lobbyRuleSeg', () => broadcast(lobbyMsg())); renderLoot('lobbyLootChips'); }
   const ul = $('memberList'); ul.innerHTML = '';
@@ -2653,7 +2741,7 @@ function renderLobby() {
   }
   const humans = net.members.length;
   $('lobbyStatus').textContent = net.isHost
-    ? (humans < 4 ? `あと ${4 - humans} 人さそえます。そろわなくても CPU が入るのでスタートできます` : '4 人そろいました！')
+    ? (net.locked ? '🔒 締め切り中：新しい人は入れません' : humans < 4 ? `あと ${4 - humans} 人さそえます。そろわなくても CPU が入るのでスタートできます` : '4 人そろいました！')
     : net.playing ? '今は試合中です。終わったら次の試合から入れます' : 'ホストがスタートするのを待っています…';
 }
 // 席 i を相手チームのだれかと入れかえる（人数のバランスはそのまま）
