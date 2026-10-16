@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
 <title>naoの008ゴールデンボール</title>
 <meta name="theme-color" content="#0b0d0a">
+<!-- ホーム画面に追加すると、ブラウザの枠なし（全画面）で開ける -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="008ゴールデン">
 <meta property="og:title" content="naoの008ゴールデンボール">
 <meta property="og:description" content="4人で撃ち合う一人称シューティング！LINEで友達をさそおう。顔は好きな画像に。やられるほどボロボロに…">
 <style>
@@ -67,6 +74,9 @@
   .mini { font-size: 12px; color: var(--muted); line-height: 1.5; }
   .slider-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin-top: 8px; }
   .slider-row span { flex: none; width: 6.8em; white-space: nowrap; }
+  .fsbox { border: 1px dashed var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 12px; font-size: 13px; line-height: 1.6; text-align: center; }
+  .fsbox .mini { margin-top: 4px; }
+  .fsbtn { display: block; margin-top: 8px; padding: 10px; border-radius: 10px; background: #2c3a52; border: 1px solid #5d7fb6; color: #fff; text-decoration: none; font-size: 15px; width: 100%; }
   .invite { background: #3d2f05; border: 1px solid var(--gold); border-radius: 12px; padding: 10px 12px; margin: 0 0 12px;
     text-align: center; font-size: 14px; color: #fff0c0; }
   details { margin-top: 14px; font-size: 13px; color: var(--muted); line-height: 1.7; }
@@ -200,6 +210,13 @@
   <div class="card">
     <div class="logo"><span class="nao">nao の</span><span class="num">008</span><span class="gb">ゴールデンボール</span></div>
     <div class="invite" id="inviteBanner" hidden></div>
+    <div class="fsbox" id="fsBox" hidden>
+      <b>📱 上下の枠なしで遊ぶには</b>
+      <div id="fsLine" hidden><a class="fsbtn" id="openSafari" href="#">🧭 Safari／ブラウザで開く</a><div class="mini">LINE の中だと上下に枠が出ます。ブラウザで開くと小さくなります</div></div>
+      <button class="fsbtn" id="installBtn" hidden>📲 アプリとしてホーム画面に追加</button>
+      <div class="mini" id="fsHowIos" hidden>Safari の <b>共有ボタン（□↑）</b> →「<b>ホーム画面に追加</b>」→ ホームの <b>008</b> アイコンから開くと、<b>全画面</b>で遊べます</div>
+      <div class="mini" id="fsHowAndroid" hidden>Chrome の <b>︙</b> →「<b>ホーム画面に追加</b>」→ ホームのアイコンから開くと全画面になります（試合中はスマホでも自動で全画面にします）</div>
+    </div>
 
     <span class="field">なまえ</span>
     <input type="text" id="nameInput" maxlength="10" placeholder="なまえを入れてね" autocomplete="off">
@@ -405,6 +422,29 @@ function applyOrient() {
 // 指の位置を、ゲーム画面の中の位置に直す
 function loc(e) { return view.rot ? { x: e.clientY, y: innerWidth - e.clientX } : { x: e.clientX, y: e.clientY }; }
 // Android はフルスクリーン＋向きロックで本当に横にする（iPhone は回転表示で対応）
+// どこで開かれているか（LINE などのアプリ内ブラウザ／ホーム画面から）
+const UA = navigator.userAgent || '';
+const isIOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isLineApp = /Line\//i.test(UA);
+const isInApp = isLineApp || /Instagram|FBAN|FBAV|TikTok|musical_ly|BytedanceWebview/i.test(UA);
+const isStandalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+let installEvt = null;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; setupFullscreenGuide(); });
+function externalUrl() { const u = new URL(location.href); u.searchParams.set('openExternalBrowser', '1'); return u.toString(); }
+function setupFullscreenGuide() {
+  const box = document.getElementById('fsBox'); if (!box) return;
+  box.hidden = !isTouch || isStandalone;
+  document.getElementById('fsLine').hidden = !isInApp;
+  document.getElementById('openSafari').href = externalUrl(); // LINE はこの印があると外のブラウザで開く
+  document.getElementById('installBtn').hidden = !installEvt;
+  document.getElementById('fsHowIos').hidden = !isIOS || isInApp;
+  document.getElementById('fsHowAndroid').hidden = isIOS || isInApp || !!installEvt;
+}
+// Android などは試合中だけ全画面にする（iPhone はホーム画面から開くと全画面）
+function tryFullscreen() {
+  if (!isTouch || isIOS || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+  document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+}
 function tryLockLandscape() {
   if (settings.orient !== 'land' || !isTouch || !screen.orientation || !screen.orientation.lock) return;
   const lock = () => screen.orientation.lock('landscape').catch(() => {});
@@ -1548,7 +1588,7 @@ function startGame(cfg) {
   $('teamScore').hidden = game.mode === 'ffa';
   $('reloadBtn').hidden = game.rule === 'melee';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
-  tryLockLandscape();
+  tryLockLandscape(); tryFullscreen();
   if (isTouch && !view.rot && innerHeight > innerWidth) feed('📱 横にすると遊びやすいよ（横にならない時は ⚙設定 →「横画面に固定」）');
   updateLockHint();
 }
@@ -2569,7 +2609,7 @@ function onClientData(d) {
 function hideAll() { for (const id of ['title', 'online', 'lobby', 'result']) $(id).hidden = true; }
 function showTitle() { hideAll(); $('title').hidden = false; drawPreview(); renderDiff('diffSeg'); renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderRule('ruleSeg'); renderLoot('lootChips'); }
 function showOnline() { hideAll(); $('online').hidden = false; }
-function inviteUrl() { return `${location.origin}${location.pathname}?room=${net.code}`; }
+function inviteUrl() { return `${location.origin}${location.pathname}?room=${net.code}&openExternalBrowser=1`; } // LINE から開いてもブラウザで開く
 function inviteText() { return `「naoの008ゴールデンボール」で勝負しよう！🔫✨\n合言葉：${net.code}\n${inviteUrl()}`; }
 function showLobby() { hideAll(); $('lobby').hidden = false; renderLobby(); }
 function renderLobby() {
@@ -2699,6 +2739,8 @@ $('toTitleBtn').onclick = () => { leaveAll(); showTitle(); };
   }
 }
 showTitle();
+setupFullscreenGuide();
+$('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; setupFullscreenGuide(); };
 
 // テスト・デバッグ用
 window.__gb = { get game() { return game; }, net, startSolo, DIFF, refreshFace, settings, handleEvent, setHelmetMesh };
