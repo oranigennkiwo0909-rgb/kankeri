@@ -198,13 +198,19 @@
 
   .members, .results { grid-template-columns: minmax(0, 1fr); }
   /* 結果画面の TikTok LIVE の宣伝 */
-  .promo { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border-radius: 14px; text-decoration: none; color: #fff;
-    background: #111; border: 2px solid transparent; background-clip: padding-box; box-shadow: -3px 0 0 #25f4ee, 3px 0 0 #fe2c55; }
-  .promo-live { flex: none; background: #fe2c55; color: #fff; font-weight: 900; font-size: 12px; padding: 3px 7px; border-radius: 6px; animation: livepulse 1.4s ease-in-out infinite; }
-  @keyframes livepulse { 50% { opacity: .55; } }
-  .promo-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.5; }
-  .promo-id { color: #25f4ee; font-weight: bold; }
-  .promo-go { flex: none; font-size: 13px; font-weight: bold; color: #fe2c55; }
+  .promo { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 14px; border-radius: 16px; text-decoration: none; color: #fff;
+    background: #111; box-shadow: -3px 0 0 #25f4ee, 3px 0 0 #fe2c55; }
+  .promo-pic { position: relative; flex: none; width: 84px; height: 84px; }
+  .promo-pic img { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; transform: scale(1.06); border: 3px solid #fe2c55; box-sizing: border-box; display: block; }
+  .promo-live { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); background: #fe2c55; color: #fff; font-weight: 900; font-size: 11px;
+    padding: 2px 8px; border-radius: 6px; border: 2px solid #111; animation: livepulse 1.4s ease-in-out infinite; }
+  @keyframes livepulse { 50% { opacity: .6; } }
+  .promo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.35; }
+  .promo-who { font-size: 12px; color: #cfcfcf; }
+  .promo-name { font-size: 24px; font-weight: 900; letter-spacing: .04em; }
+  .promo-msg { font-size: 13px; margin-top: 4px; }
+  .promo-ask { font-size: 12px; color: #ffd0da; }
+  .promo-id { font-size: 12px; color: #25f4ee; font-weight: bold; margin-top: 2px; overflow-wrap: anywhere; }
   .results { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
   .results li { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
   .results li.win { background: rgba(245,197,66,.15); border-color: var(--gold); }
@@ -352,9 +358,14 @@
     <h2 id="resultTitle">結果</h2>
     <ul class="results" id="resultList"></ul>
     <a class="promo" href="https://www.tiktok.com/@hitoyasumi.takarazuka" target="_blank" rel="noopener">
-      <span class="promo-live">LIVE</span>
-      <span class="promo-text"><b>このゲームを作った人が TikTok LIVE やってます！</b><br>フォロー＆いいね、よろしくね 🙏❤️<br><span class="promo-id">@hitoyasumi.takarazuka</span></span>
-      <span class="promo-go">見に行く ▶</span>
+      <span class="promo-pic"><img src="creator.jpg" alt="nao"><span class="promo-live">LIVE</span></span>
+      <span class="promo-text">
+        <span class="promo-who">貸切美容室オーナー</span>
+        <span class="promo-name">nao</span>
+        <span class="promo-msg">このゲームを作った人が<br><b>TikTok LIVE やってます！</b></span>
+        <span class="promo-ask">フォロー＆いいねしてね 🙏❤️</span>
+        <span class="promo-id">@hitoyasumi.takarazuka ▶</span>
+      </span>
     </a>
     <button class="primary" id="againBtn">もう一回</button>
     <button class="secondary" id="toLobbyBtn">作戦会議室へ</button>
