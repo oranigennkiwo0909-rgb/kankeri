@@ -151,6 +151,13 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips button { padding: 7px 10px; font-size: 13px; border-radius: 999px; opacity: .55; }
   .chips button.on { opacity: 1; }
+  #touch.editing { z-index: 41; background: rgba(0,0,0,.35); }
+  #touch.editing #stickZone, #touch.editing #lookZone { pointer-events: none; }
+  #touch.editing button { cursor: move; box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+  #touch.editing button.sel { box-shadow: 0 0 0 4px var(--gold); }
+  #layoutPanel { position: fixed; z-index: 42; left: 50%; top: max(10px, env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+    width: min(420px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+  #layoutPanel p { margin: 0 0 6px; font-size: 13px; text-align: center; color: var(--muted); }
   .vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .vgrid button { padding: 8px 4px; font-size: 13px; }
 
@@ -285,10 +292,19 @@
     <div class="seg2"><button id="assistOn">オン</button><button id="assistOff">オフ</button></div>
     <span class="field">やられた時の声（えらぶと試しに鳴ります）</span>
     <div class="vgrid" id="voiceGrid"></div>
+    <span class="field">ボタンの位置（スマホ）</span>
+    <button class="secondary" id="layoutBtn" style="margin-top:0">🕹 ボタンの位置・大きさを変える</button>
     <span class="field">BGM の音量：<b id="bgmVal">35</b></span>
     <div class="slider-row"><span style="width:auto">🔇</span><input type="range" id="bgmRange" min="0" max="100" step="5"><span style="width:auto">🔊</span></div>
     <button class="primary" id="settingsClose">とじる</button>
   </div>
+</div>
+
+<!-- ===== ボタン配置の編集 ===== -->
+<div id="layoutPanel" hidden>
+  <p>ボタンを指でドラッグして好きな場所へ。<br>えらんだボタンの大きさは下のスライダーで。</p>
+  <div class="slider-row" style="margin-top:0"><span style="width:auto">小</span><input type="range" id="btnSize" min="60" max="170" step="5" value="100"><span style="width:auto">大</span></div>
+  <div class="row2" style="margin-top:8px"><button id="layoutReset">もとに戻す</button><button id="layoutDone" class="on">完了</button></div>
 </div>
 
 <!-- ===== HUD ===== -->
@@ -1306,7 +1322,7 @@ function startGame(cfg) {
     if (e.id === net.myId) { game.me = e; e.root.visible = false; }
   }
   buildBoard();
-  hideAll(); $('hud').hidden = false; $('touch').hidden = !isTouch;
+  hideAll(); $('hud').hidden = false; $('touch').hidden = !isTouch && !layoutEditing;
   $('hpname').textContent = game.me ? game.me.name : '';
   $('feed').innerHTML = '';
   if (net.isHost) for (const e of game.ents) hostSpawn(e, true);
@@ -1317,7 +1333,7 @@ function endGame(silent) {
   for (const e of game.ents) scene.remove(e.root);
   game = null; bgmStop();
   if (document.pointerLockElement) document.exitPointerLock();
-  $('hud').hidden = true; $('touch').hidden = true; $('lockhint').hidden = true;
+  $('hud').hidden = true; $('touch').hidden = !layoutEditing; $('lockhint').hidden = true;
   if (dmgCtx) { dmgCtx.setTransform(1, 0, 0, 1, 0, 0); dmgCtx.clearRect(0, 0, $('dmgdir').width, $('dmgdir').height); } dmgDrawn = false;
   void silent;
 }
@@ -1721,7 +1737,62 @@ addEventListener('mousemove', (e) => {
 });
 $('lockhint').addEventListener('click', () => { audio(); canvas.requestPointerLock && canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', updateLockHint);
-function updateLockHint() { $('lockhint').hidden = isTouch || !game || game.over || !$('settings').hidden || document.pointerLockElement === canvas; }
+function updateLockHint() { $('lockhint').hidden = isTouch || !game || game.over || !$('settings').hidden || layoutEditing || document.pointerLockElement === canvas; }
+
+// ---- ボタン配置（ドラッグで移動・大きさ変更。端末ごとに保存） ----
+const LAYOUT_IDS = ['fireBtn', 'reloadBtn', 'jumpBtn'];
+let btnLayout = {}; try { btnLayout = JSON.parse(store.get('gb_btns') || '{}') || {}; } catch (e) { btnLayout = {}; }
+let layoutEditing = false, layoutSel = 'fireBtn';
+function applyBtnLayout() {
+  for (const id of LAYOUT_IDS) {
+    const el = $(id), L = btnLayout[id];
+    if (L) Object.assign(el.style, { left: (L.x * 100) + '%', top: (L.y * 100) + '%', right: 'auto', bottom: 'auto', transform: `translate(-50%, -50%) scale(${L.s || 1})` });
+    else Object.assign(el.style, { left: '', top: '', right: '', bottom: '', transform: '' });
+    el.classList.toggle('sel', layoutEditing && id === layoutSel);
+  }
+}
+function layoutOf(id) { // いまの見た目の位置を割合で
+  const el = $(id), r = el.getBoundingClientRect();
+  return btnLayout[id] || { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight, s: 1 };
+}
+function startLayoutEdit() {
+  layoutEditing = true; $('settings').hidden = true;
+  $('touch').hidden = false; $('touch').classList.add('editing'); $('layoutPanel').hidden = false;
+  $('btnSize').value = Math.round((layoutOf(layoutSel).s || 1) * 100);
+  applyBtnLayout(); updateLockHint();
+}
+function endLayoutEdit() {
+  layoutEditing = false; $('touch').classList.remove('editing'); $('layoutPanel').hidden = true;
+  $('touch').hidden = !(game && isTouch);
+  store.set('gb_btns', JSON.stringify(btnLayout)); applyBtnLayout();
+  $('settings').hidden = false; renderSettings();
+}
+for (const id of LAYOUT_IDS) {
+  const el = $(id); let drag = null;
+  el.addEventListener('pointerdown', (e) => {
+    if (!layoutEditing) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    layoutSel = id; const L = layoutOf(id); btnLayout[id] = L;
+    drag = { id: e.pointerId, ox: e.clientX - L.x * innerWidth, oy: e.clientY - L.y * innerHeight };
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    $('btnSize').value = Math.round((L.s || 1) * 100); applyBtnLayout();
+  }, true);
+  el.addEventListener('pointermove', (e) => {
+    if (!layoutEditing) return;
+    e.stopImmediatePropagation();
+    if (!drag || e.pointerId !== drag.id) return;
+    const L = btnLayout[id];
+    L.x = clamp((e.clientX - drag.ox) / innerWidth, 0.04, 0.96); L.y = clamp((e.clientY - drag.oy) / innerHeight, 0.06, 0.94);
+    applyBtnLayout();
+  }, true);
+  const end = (e) => { if (!layoutEditing) return; e.stopImmediatePropagation(); drag = null; };
+  el.addEventListener('pointerup', end, true); el.addEventListener('pointercancel', end, true);
+}
+$('btnSize').oninput = (e) => { const L = layoutOf(layoutSel); L.s = Number(e.target.value) / 100; btnLayout[layoutSel] = L; applyBtnLayout(); };
+$('layoutReset').onclick = () => { btnLayout = {}; $('btnSize').value = 100; applyBtnLayout(); };
+$('layoutDone').onclick = endLayoutEdit;
+$('layoutBtn').onclick = startLayoutEdit;
+applyBtnLayout();
 
 // タッチ
 {
