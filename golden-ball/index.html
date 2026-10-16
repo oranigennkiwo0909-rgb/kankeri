@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="008ゴールデン">
 <meta property="og:title" content="naoの008ゴールデンボール">
-<meta property="og:description" content="4人で撃ち合う一人称シューティング！LINEで友達をさそおう。顔は好きな画像に。やられるほどボロボロに…">
+<meta property="og:description" content="最大6人で撃ち合う一人称シューティング！LINEで友達をさそおう。顔は好きな画像に。やられるほどボロボロに…">
 <style>
   /* 秘密基地の 4 人対戦 FPS。画面いっぱいの 3D の上に、金色のパネルが浮かぶ */
   :root {
@@ -260,6 +260,8 @@
     <div id="soloTeamBox" style="margin-top:6px"></div>
     <span class="field">CPU のつよさ</span>
     <div class="seg" id="diffSeg"></div>
+    <span class="field">人数（CPU もふくめて）</span>
+    <div class="seg3" id="sizeSeg"></div>
     <span class="field">🎁 宝箱の中身（チェックしたものだけ出ます）</span>
     <div class="chips" id="lootChips"></div>
 
@@ -270,7 +272,7 @@
     <details>
       <summary>あそびかた</summary>
       <ul>
-        <li>4人で撃ち合い！先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
+        <li>最大6人で撃ち合い！（人数は 4・5・6 人から選べて、足りない分は CPU）先に <b>10人</b> たおすか、5分たった時に一番たおした人の勝ち。</li>
         <li>👥 チーム戦（2対2）：赤チームと青チームに分かれて、先にチームで <b>12人</b> たおした方の勝ち。味方は撃っても当たりません。</li>
         <li>🔪 接近戦のみ：銃なし！みんなナイフで始まり、宝箱から 🗡剣 や ✨🪚金のチェーンソー（15秒・最強）が出ます。</li>
         <li>🛡 配信する時は、作戦会議室の「メンバー管理」でキック・ブロック・顔写真をかくす・締め切りができます。合言葉はタップでかくせます。</li>
@@ -326,6 +328,8 @@
     <div id="hostOnly">
       <span class="field">足りない人数の CPU のつよさ</span>
       <div class="seg" id="lobbyDiffSeg"></div>
+      <span class="field">人数（足りない分は CPU）</span>
+      <div class="seg3" id="lobbySizeSeg"></div>
       <span class="field">モード（チームは下のリストの色ボタンで入れかえ）</span>
       <div class="seg3" id="lobbyModeSeg"></div>
       <div class="seg2" id="lobbyRuleSeg" style="margin-top:6px"></div>
@@ -528,9 +532,14 @@ const RULES = { gun: '🔫 銃あり', melee: '🔪 接近戦のみ' };
 const MODES = { ffa: '個人戦', '2v2': 'チーム 2対2', '3v1': '3対1 ボス戦' };
 const TEAM_WIN = 12, BOSS_TAKE = 0.4;
 const TEAM_COLORS = ['#a8302a', '#2a4f9a'], TEAM_NAMES = ['🔴 赤チーム', '🔵 青チーム'];
-function defaultTeams(m) { return m === '2v2' ? [0, 1, 0, 1] : m === '3v1' ? [0, 0, 0, 1] : [0, 1, 2, 3]; }
-const CPU_NAMES = ['CPU ミスターX', 'CPU ドクターQ', 'CPU エージェントK', 'CPU マダムM'];
-const SUITS = ['#2d3b58', '#5c2a2a', '#2c5a3b', '#5c4a24'];
+const MAX_PLAYERS = 6;
+let roomSize = clamp(Number(store.get('gb_size')) || 4, 4, MAX_PLAYERS); // 部屋の人数（足りない分は CPU）
+function defaultTeams(m, n = roomSize) { return Array.from({ length: n }, (_, i) => (m === '2v2' ? i % 2 : m === '3v1' ? (i === n - 1 ? 1 : 0) : i)); }
+function modeLabel(k, n = roomSize) { return k === '2v2' ? `チーム ${Math.ceil(n / 2)}対${Math.floor(n / 2)}` : k === '3v1' ? `${n - 1}対1 ボス戦` : '個人戦'; }
+const teamWin = (n) => 6 + Math.round(1.5 * n);        // チーム戦の目標（4人→12、6人→15）
+const bossTake = (n) => Math.min(1, 1.2 / Math.max(1, n - 1)); // 相手が多いほどボスはかたい（4人→40%、6人→24%）
+const CPU_NAMES = ['CPU ミスターX', 'CPU ドクターQ', 'CPU エージェントK', 'CPU マダムM', 'CPU キャプテンJ', 'CPU ミスZ'];
+const SUITS = ['#2d3b58', '#5c2a2a', '#2c5a3b', '#5c4a24', '#4a2d5c', '#2a5258'];
 
 // ---------------------------------------------------------------------
 //  マップ（秘密基地）。壁は [中心x, 中心z, 幅, 奥行き, 高さ, 種類]
@@ -936,21 +945,32 @@ function renderRule(segId, onPick) {
     seg.appendChild(b);
   }
 }
-let teams = defaultTeams(gmode); // 4 つの席それぞれのチーム
+let teams = defaultTeams(gmode); // 席それぞれのチーム
 function renderMode(segId, onPick) {
   const seg = $(segId); seg.innerHTML = '';
   for (const k of Object.keys(MODES)) {
-    const b = document.createElement('button'); b.textContent = MODES[k]; b.className = k === gmode ? 'on' : '';
+    const b = document.createElement('button'); b.textContent = modeLabel(k); b.className = k === gmode ? 'on' : '';
     b.onclick = () => { gmode = k; store.set('gb_mode', k); teams = defaultTeams(k); renderMode(segId, onPick); if (onPick) onPick(); };
+    seg.appendChild(b);
+  }
+}
+// 人数（4・5・6人）
+function renderSize(segId, onPick) {
+  const seg = $(segId); seg.innerHTML = '';
+  let humansNow = 0; try { humansNow = net.members.length; } catch (e) {} // 読みこみ直後は net がまだない
+  const minN = Math.max(4, humansNow);
+  for (let n = 4; n <= MAX_PLAYERS; n++) {
+    const b = document.createElement('button'); b.textContent = `${n}人`; b.className = n === roomSize ? 'on' : ''; b.disabled = n < minN;
+    b.onclick = () => { roomSize = n; store.set('gb_size', String(n)); teams = defaultTeams(gmode); renderSize(segId, onPick); if (onPick) onPick(); };
     seg.appendChild(b);
   }
 }
 function renderSoloTeam() {
   const box = $('soloTeamBox'); box.innerHTML = '';
-  if (gmode === '2v2') { box.innerHTML = '<div class="mini">あなた＋CPU 1人 vs CPU 2人</div>'; return; }
+  if (gmode === '2v2') { const a = Math.ceil(roomSize / 2), b = Math.floor(roomSize / 2); box.innerHTML = `<div class="mini">あなた＋CPU ${a - 1}人 vs CPU ${b}人</div>`; return; }
   if (gmode !== '3v1') return;
   const row = document.createElement('div'); row.className = 'seg2';
-  for (const [v, label] of [[false, '3人側（ボスをたおす）'], [true, '👑 自分がボス']]) {
+  for (const [v, label] of [[false, `${roomSize - 1}人側（ボスをたおす）`], [true, '👑 自分がボス']]) {
     const b = document.createElement('button'); b.textContent = label; b.className = soloBoss === v ? 'on' : '';
     b.onclick = () => { soloBoss = v; store.set('gb_boss', v ? '1' : '0'); renderSoloTeam(); };
     row.appendChild(b);
@@ -967,6 +987,7 @@ function renderDiff(segId, onPick) {
 }
 renderDiff('diffSeg');
 renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderRule('ruleSeg');
+renderSize('sizeSeg', () => { renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); });
 renderLoot('lootChips');
 
 // ---------------------------------------------------------------------
@@ -1667,8 +1688,8 @@ function buildBoard() {
 }
 function renderBoard() {
   for (const e of game.ents) { e.scK.textContent = e.kills; e.scEl.classList.toggle('dead', !e.alive); }
-  const t = Math.max(0, Math.ceil(game.timeLeft)); $('timer').textContent = `⏱ ${(t / 60) | 0}:${String(t % 60).padStart(2, '0')}  🎯${game.mode === 'ffa' ? WIN_KILLS : TEAM_WIN}`;
-  if (game.mode !== 'ffa') $('teamScore').textContent = game.mode === '3v1' ? `3人 ${teamScore(0)} : ${teamScore(1)} 👑` : `🔴 ${teamScore(0)} : ${teamScore(1)} 🔵`;
+  const t = Math.max(0, Math.ceil(game.timeLeft)); $('timer').textContent = `⏱ ${(t / 60) | 0}:${String(t % 60).padStart(2, '0')}  🎯${game.mode === 'ffa' ? WIN_KILLS : teamWin(game.ents.length)}`;
+  if (game.mode !== 'ffa') $('teamScore').textContent = game.mode === '3v1' ? `${game.ents.length - 1}人 ${teamScore(0)} : ${teamScore(1)} 👑` : `🔴 ${teamScore(0)} : ${teamScore(1)} 🔵`;
 }
 function feed(parts) {
   const f = $('feed'), d = document.createElement('div');
@@ -1714,7 +1735,7 @@ function hostDamage(v, a, head, w) {
     dmg -= ab; v.helmDur -= ab; blocked = 1;
     if (v.helmDur <= 0.5) { v.helmLv = 0; v.helmDur = 0; broke = 1; }
   }
-  if (v.boss && !gold) dmg *= BOSS_TAKE; // ボスはかたい
+  if (v.boss && !gold) dmg *= bossTake(game.ents.length); // ボスはかたい
   dmg = Math.round(dmg);
   v.hp = Math.max(0, v.hp - dmg);
   if (v.isBot && a !== v) v.huntId = a.id;
@@ -1724,7 +1745,7 @@ function hostDamage(v, a, head, w) {
     v.respawnAt = game.time + RESPAWN;
     emit({ t: 'kill', k: a.id, v: v.id, h: head ? 1 : 0, g: gold ? 1 : 0 });
     if (game.gold === v.id) emit({ t: 'gold', id: null });
-    if (game.mode === 'ffa' ? a.kills >= WIN_KILLS : teamScore(a.team) >= TEAM_WIN) hostEnd();
+    if (game.mode === 'ffa' ? a.kills >= WIN_KILLS : teamScore(a.team) >= teamWin(game.ents.length)) hostEnd();
   }
 }
 function hostFire(shooter, a, b, tgId, head, w) {
@@ -2559,7 +2580,7 @@ function hostRoom(retry = 0) {
     conn.on('close', drop); conn.on('error', drop);
   });
 }
-function lobbyMsg() { return { t: 'lobby', code: net.code, diff, gmode, teams, rule, members: net.members.map((m) => ({ id: m.id, name: m.name, face: m.face, voice: m.voice })), playing: !!(game && !game.over) }; }
+function lobbyMsg() { return { t: 'lobby', code: net.code, diff, gmode, teams, rule, size: roomSize, members: net.members.map((m) => ({ id: m.id, name: m.name, face: m.face, voice: m.voice })), playing: !!(game && !game.over) }; }
 function onHostData(conn, d) {
   if (!d || typeof d !== 'object') return;
   net.seen.set(conn.peer, Date.now());
@@ -2567,7 +2588,7 @@ function onHostData(conn, d) {
     const uid = String(d.uid || '').slice(0, 40);
     if (uid && (net.roomBlocks.has(uid) || blockedList().some((b) => b.uid === uid))) { try { conn.send({ t: 'blocked' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
     if (net.locked && !net.members.some((m) => m.id === conn.peer)) { try { conn.send({ t: 'locked' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
-    if (net.members.length >= 4) { try { conn.send({ t: 'full' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
+    if (net.members.length >= roomSize) { try { conn.send({ t: 'full' }); } catch (e) {} setTimeout(() => conn.close(), 400); return; }
     const face = typeof d.face === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(d.face) && d.face.length < 150000 ? d.face : null;
     net.conns.set(conn.peer, conn);
     net.members = net.members.filter((m) => m.id !== conn.peer);
@@ -2696,25 +2717,26 @@ function hostLost() {
 function onClientData(d) {
   if (!d || typeof d !== 'object') return;
   net.hostSeen = Date.now();
-  if (d.t === 'full') { $('onlineStatus').textContent = 'この部屋はもう 4 人いっぱいです'; leaveAll(); showOnline(); return; }
+  if (d.t === 'full') { $('onlineStatus').textContent = 'この部屋はもう人がいっぱいです'; leaveAll(); showOnline(); return; }
   if (d.t === 'blocked' || d.t === 'locked') { $('onlineStatus').textContent = d.t === 'locked' ? 'この部屋は今、新しい人を入れていません' : 'この部屋には入れません'; net.bye = true; leaveAll(); showOnline(); return; }
   if (d.t === 'kicked') { net.bye = true; leaveAll(); showTitle(); setTimeout(() => alert('部屋をつくった人によって、部屋から外されました'), 50); return; }
   if (d.t === 'noface') { const e = game && game.byId.get(d.id); if (e && e !== game.me) hideFaceOf(e); return; }
   if (d.t === 'lobby') {
     clearTimeout(net.joinTimer);
-    net.members = Array.isArray(d.members) ? d.members.slice(0, 4) : []; if (DIFF[d.diff]) diff = d.diff;
+    net.members = Array.isArray(d.members) ? d.members.slice(0, MAX_PLAYERS) : []; if (DIFF[d.diff]) diff = d.diff;
+    roomSize = clamp(num(d.size, 4), 4, MAX_PLAYERS);
     net.playing = !!d.playing;
     if (MODES[d.gmode]) gmode = d.gmode;
     if (RULES[d.rule]) rule = d.rule;
-    if (Array.isArray(d.teams) && d.teams.length === 4) teams = d.teams.map((t) => clamp(num(t), 0, 3));
+    if (Array.isArray(d.teams) && d.teams.length === roomSize) teams = d.teams.map((t) => clamp(num(t), 0, MAX_PLAYERS - 1));
     if (!game) showLobby(); else renderLobby();
     return;
   }
   if (d.t === 'start') {
     if (DIFF[d.diff]) diff = d.diff;
-    const roster = (Array.isArray(d.roster) ? d.roster : []).slice(0, 4).map((r, i) => {
+    const roster = (Array.isArray(d.roster) ? d.roster : []).slice(0, MAX_PLAYERS).map((r, i) => {
       const m = net.members.find((x) => x.id === r.id);
-      return { id: String(r.id), name: cleanName(r.name, r.bot ? 16 : 10) || 'CPU', bot: !!r.bot, slot: i, face: m ? m.face : null, voice: VOICES[r.voice] ? r.voice : 'm1', team: clamp(num(r.team, i), 0, 3) };
+      return { id: String(r.id), name: cleanName(r.name, r.bot ? 16 : 10) || 'CPU', bot: !!r.bot, slot: i, face: m ? m.face : null, voice: VOICES[r.voice] ? r.voice : 'm1', team: clamp(num(r.team, i), 0, MAX_PLAYERS - 1) };
     });
     if (MODES[d.gmode]) gmode = d.gmode;
     if (!roster.some((r) => r.id === net.myId)) return; // 試合中に入った人は次から
@@ -2730,7 +2752,7 @@ function onClientData(d) {
 //  画面の切りかえ
 // ---------------------------------------------------------------------
 function hideAll() { for (const id of ['title', 'online', 'lobby', 'result']) $(id).hidden = true; }
-function showTitle() { hideAll(); $('title').hidden = false; drawPreview(); renderDiff('diffSeg'); renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderRule('ruleSeg'); renderLoot('lootChips'); }
+function showTitle() { hideAll(); $('title').hidden = false; drawPreview(); renderDiff('diffSeg'); renderSize('sizeSeg', () => { renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); }); renderMode('modeSeg', renderSoloTeam); renderSoloTeam(); renderRule('ruleSeg'); renderLoot('lootChips'); }
 function showOnline() { hideAll(); $('online').hidden = false; }
 function inviteUrl() { return `${location.origin}${location.pathname}?room=${net.code}&openExternalBrowser=1`; } // LINE から開いてもブラウザで開く
 function inviteText() { return `「naoの008ゴールデンボール」で勝負しよう！🔫✨\n合言葉：${net.code}\n${inviteUrl()}`; }
@@ -2739,9 +2761,10 @@ function renderLobby() {
   if ($('lobby').hidden) return;
   $('lobbyCode').textContent = settings.hideCode ? '●●●●●' : net.code; // 配信で映らないようにかくせる
   $('hostOnly').hidden = !net.isHost;
-  if (net.isHost) { renderDiff('lobbyDiffSeg', () => broadcast(lobbyMsg())); renderMode('lobbyModeSeg', () => { broadcast(lobbyMsg()); renderLobby(); }); renderRule('lobbyRuleSeg', () => broadcast(lobbyMsg())); renderLoot('lobbyLootChips'); }
+  if (net.isHost) { renderDiff('lobbyDiffSeg', () => broadcast(lobbyMsg())); renderSize('lobbySizeSeg', () => { broadcast(lobbyMsg()); renderLobby(); }); renderMode('lobbyModeSeg', () => { broadcast(lobbyMsg()); renderLobby(); }); renderRule('lobbyRuleSeg', () => broadcast(lobbyMsg())); renderLoot('lobbyLootChips'); }
   const ul = $('memberList'); ul.innerHTML = '';
-  for (let i = 0; i < 4; i++) {
+  if (teams.length !== roomSize) teams = defaultTeams(gmode);
+  for (let i = 0; i < roomSize; i++) {
     const m = net.members[i], li = document.createElement('li');
     const c = document.createElement('canvas'); c.width = c.height = FS;
     const nm = document.createElement('span'); nm.className = 'nm';
@@ -2772,12 +2795,12 @@ function renderLobby() {
   }
   const humans = net.members.length;
   $('lobbyStatus').textContent = net.isHost
-    ? (net.locked ? '🔒 締め切り中：新しい人は入れません' : humans < 4 ? `あと ${4 - humans} 人さそえます。そろわなくても CPU が入るのでスタートできます` : '4 人そろいました！')
+    ? (net.locked ? '🔒 締め切り中：新しい人は入れません' : humans < roomSize ? `あと ${roomSize - humans} 人さそえます。そろわなくても CPU が入るのでスタートできます` : `${roomSize} 人そろいました！`)
     : net.playing ? '今は試合中です。終わったら次の試合から入れます' : 'ホストがスタートするのを待っています…';
 }
 // 席 i を相手チームのだれかと入れかえる（人数のバランスはそのまま）
 function swapTeam(i) {
-  const other = [0, 1, 2, 3].filter((j) => teams[j] !== teams[i]);
+  const other = teams.map((_, j) => j).filter((j) => teams[j] !== teams[i]);
   if (!other.length) return;
   const cpu = other.filter((j) => j >= net.members.length);
   const j = (cpu.length ? cpu : other)[(cpu.length ? cpu : other).length - 1];
@@ -2785,7 +2808,8 @@ function swapTeam(i) {
 }
 function hostStart() {
   const roster = [];
-  for (let i = 0; i < 4; i++) {
+  if (teams.length !== roomSize) teams = defaultTeams(gmode);
+  for (let i = 0; i < roomSize; i++) {
     const m = net.members[i];
     const cpuVoice = ['m1', 'm2', 'm3', 'f1', 'f2', 'f3'][(Math.random() * 6) | 0];
     const team = gmode === 'ffa' ? i : (teams[i] ? 1 : 0);
@@ -2799,7 +2823,7 @@ function startSolo() {
   leaveAll();
   net.mode = 'solo'; net.isHost = true; net.myId = 'me';
   net.members = [{ id: 'me', name: myName(), face: prof.face, voice: settings.voice }];
-  teams = gmode === '3v1' ? (soloBoss ? [1, 0, 0, 0] : [0, 0, 0, 1]) : defaultTeams(gmode);
+  teams = gmode === '3v1' ? defaultTeams('3v1').map((_, i) => (soloBoss ? (i === 0 ? 1 : 0) : (i === roomSize - 1 ? 1 : 0))) : defaultTeams(gmode);
   hostStart();
 }
 function showResult() {
