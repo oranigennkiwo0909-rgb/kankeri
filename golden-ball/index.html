@@ -154,13 +154,17 @@
   #stickBase { position: absolute; width: 120px; height: 120px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); background: rgba(255,255,255,.08);
     transform: translate(-50%, -50%); pointer-events: none; }
   #stickKnob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,255,255,.45); }
-  #fireBtn, #reloadBtn, #jumpBtn { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); color: #fff; font-weight: bold; touch-action: none; }
+  #fireBtn, #reloadBtn, #jumpBtn, #dashBtn { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); color: #fff; font-weight: bold; touch-action: none; }
   #fireBtn { right: max(26px, env(safe-area-inset-right, 0px)); bottom: 90px; width: 96px; height: 96px; background: rgba(224,64,42,.55); font-size: 18px; }
   #fireBtn.gold { background: rgba(245,197,66,.65); color: #2a1d00; }
   #reloadBtn { right: max(136px, env(safe-area-inset-right, 0px)); bottom: 36px; width: 62px; height: 62px; background: rgba(0,0,0,.4); font-size: 12px; padding: 0; }
   #jumpBtn { right: max(136px, env(safe-area-inset-right, 0px)); bottom: 112px; width: 62px; height: 62px; background: rgba(60,120,220,.45); font-size: 12px; padding: 0; }
   /* 横持ちで画面が低い時はボタンを小さめ・少し上に */
   #app.compact #fireBtn { bottom: 64px; width: 84px; height: 84px; }
+  #dashBtn { right: max(208px, env(safe-area-inset-right, 0px)); bottom: 112px; width: 62px; height: 62px; background: rgba(40,170,90,.5); font-size: 12px; padding: 0; line-height: 1.2; }
+  #dashBtn.run { background: rgba(255,200,40,.75); color: #2a1d00; }
+  #dashBtn.cool { background: rgba(0,0,0,.45); color: #aaa; }
+  #app.compact #dashBtn { right: max(182px, env(safe-area-inset-right, 0px)); bottom: 92px; width: 56px; height: 56px; }
   #app.compact #jumpBtn { right: max(118px, env(safe-area-inset-right, 0px)); bottom: 92px; width: 56px; height: 56px; }
   #app.compact #reloadBtn { right: max(118px, env(safe-area-inset-right, 0px)); bottom: 26px; width: 56px; height: 56px; }
   #app.compact .sc .n { display: none; }
@@ -295,6 +299,7 @@
         <li>🍄 キノコ：顔が 2 倍の大きさに！（15秒・当たりやすくなるハズレアイテム）</li>
         <li>🪶 羽根：10秒間 空を飛べる。ジャンプボタン長押しで上昇。</li>
         <li>ジャンプ（パソコンはスペースキー）で低い木箱に乗れます。</li>
+        <li>🏃 ダッシュ（パソコンは Shift キー）：5 秒間速く走れて、そのあと 10 秒休み。</li>
         <li>⛑ ヘルメットは頭へのダメージを減らします。Lv1：30%、Lv2：45%、Lv3：60% カット。ダメージを受けるとすり減って、こわれます。</li>
         <li>頭に当てると 2 倍ダメージ。</li>
         <li>撃たれると、撃ってきた方向が赤い矢印で出ます。</li>
@@ -440,11 +445,12 @@
   <div id="stampPanel" hidden><div class="stamps" id="hudStampBtns"></div></div>
   <div id="hudBtns"><button id="stampBtn">💬</button><button id="hudModBtn" hidden>🛡 管理</button><button id="hudSetBtn">⚙ 設定</button><button id="menuBtn">やめる</button></div>
 </div>
-<div id="lockhint" hidden><div>クリックでスタート<br><span class="mini">WASD：移動 / マウス：狙う / クリック：撃つ / R：リロード / スペース：ジャンプ / 1〜0：スタンプ / Esc：止める</span></div></div>
+<div id="lockhint" hidden><div>クリックでスタート<br><span class="mini">WASD：移動 / マウス：狙う / クリック：撃つ / R：リロード / スペース：ジャンプ / Shift：ダッシュ / 1〜0：スタンプ / Esc：止める</span></div></div>
 <div id="touch" hidden>
   <div id="stickZone"></div>
   <div id="lookZone"></div>
   <div id="stickBase" hidden><div id="stickKnob"></div></div>
+  <button id="dashBtn">ダッシュ</button>
   <button id="jumpBtn">ジャンプ</button>
   <button id="reloadBtn">リロード</button>
   <button id="fireBtn">🔫</button>
@@ -2006,6 +2012,7 @@ function botThink(b, dt) {
     if (fxOn(o, 'cloak') && d > 4) continue; // 透明マントの相手は近くないと見えない
     if (d < bd && canSee(b, o)) { bd = d; tg = o; }
   }
+  const tg0 = tg, bd0 = bd; // ダッシュの判断用（下で tg を消すことがある）
   let mx = 0, mz = 0;
   if (tg) {
     if (b.target !== tg) { b.target = tg; b.seenAt = game.time; }
@@ -2071,7 +2078,8 @@ function botThink(b, dt) {
   }
   const L = Math.hypot(mx, mz);
   if (L > 0.01) {
-    const sp = P.speed * (meleeRule() ? 1.12 : 1) * dt / Math.max(1, L), ox = b.x, oz = b.z;
+    if (game.time >= (b.dashReady || 0) && ((tg0 && meleeRule() && bd0 > 5) || (!tg0 && Math.random() < 0.004))) { b.dashUntil = game.time + DASH_TIME; b.dashReady = game.time + DASH_TIME + DASH_REST; }
+    const sp = P.speed * (meleeRule() ? 1.12 : 1) * (game.time < (b.dashUntil || 0) ? DASH_MUL : 1) * dt / Math.max(1, L), ox = b.x, oz = b.z;
     b.x += mx * sp; b.z += mz * sp; collide(b);
     if (Math.hypot(b.x - ox, b.z - oz) < sp * 0.2) { b.strafe *= -1; b.repath = 0; }
   }
@@ -2308,9 +2316,18 @@ function startReload() {
   game.reloadT = gold ? GOLD_RELOAD : RELOAD; sfx('reload', 0.7);
 }
 
+// ---- ダッシュ：5 秒走れて、そのあと 10 秒休み ----
+const DASH_TIME = 5, DASH_REST = 10, DASH_MUL = 1.6;
+function tryDash() {
+  if (!game || !game.me || !game.me.alive || game.over) return;
+  if (game.time < (game.dashReady || 0)) return;
+  game.dashUntil = game.time + DASH_TIME; game.dashReady = game.time + DASH_TIME + DASH_REST;
+  if (AC) playBuf(sounds.swish, 0.6, { rate: 0.6, rev: 0.1 });
+}
 // キーボード・マウス
 addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !e.repeat) { input.jumpPress = true; if (game) e.preventDefault(); }
+  if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) tryDash(); // パソコンは Shift でダッシュ
   input.keys[e.code] = true;
   if (e.code === 'KeyR' && game) startReload();
   const dn = /^Digit([0-9])$/.exec(e.code); // パソコンは 1〜9・0 キーでスタンプ
@@ -2329,7 +2346,7 @@ document.addEventListener('pointerlockchange', updateLockHint);
 function updateLockHint() { $('lockhint').hidden = isTouch || !game || game.over || !$('settings').hidden || !$('modPanel').hidden || layoutEditing || document.pointerLockElement === canvas; }
 
 // ---- ボタン配置（ドラッグで移動・大きさ変更。端末ごとに保存） ----
-const LAYOUT_IDS = ['fireBtn', 'reloadBtn', 'jumpBtn'];
+const LAYOUT_IDS = ['fireBtn', 'reloadBtn', 'jumpBtn', 'dashBtn'];
 // 縦持ちと横持ちで、配置を別々に保存する（前は共通で、横にすると重なっていた）
 let btnLayouts = { land: {}, port: {} };
 try { const o = JSON.parse(store.get('gb_btns2') || 'null'); if (o && typeof o === 'object') btnLayouts = { land: o.land || {}, port: o.port || {} }; } catch (e) {}
@@ -2443,6 +2460,7 @@ applyBtnLayout();
   }
   $('reloadBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (game) startReload(); });
   const jb = $('jumpBtn');
+  $('dashBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); tryDash(); });
   jb.addEventListener('pointerdown', (e) => { e.preventDefault(); try { jb.setPointerCapture(e.pointerId); } catch (err) {} input.jump = true; input.jumpPress = true; });
   const jEnd = () => { input.jump = false; };
   jb.addEventListener('pointerup', jEnd); jb.addEventListener('pointercancel', jEnd);
@@ -2503,7 +2521,8 @@ function step(dt) {
     if (k.ArrowLeft) me.yaw += 2.4 * dt; if (k.ArrowRight) me.yaw -= 2.4 * dt;
     const L = Math.hypot(f, s); if (L > 1) { f /= L; s /= L; }
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = -fz, rz = fx;
-    const spd = SPEED * (meleeRule() ? 1.12 : 1); // 接近戦は少し速く走れる
+    const dashing = game.time < (game.dashUntil || 0);
+    const spd = SPEED * (meleeRule() ? 1.12 : 1) * (dashing ? DASH_MUL : 1); // 接近戦は少し速く走れる／ダッシュ中はもっと速い
     me.x += (fx * f + rx * s) * spd * dt; me.z += (fz * f + rz * s) * spd * dt;
     collide(me);
     me.rx = me.x; me.rz = me.z; me.walk += Math.hypot(f, s) * dt * 9;
@@ -2600,6 +2619,8 @@ function step(dt) {
     if (me.alive) {
       const bob = me.y > 0.01 ? 0 : Math.sin(me.walk) * 0.012;
       camera.position.set(me.x, me.y + EYE + bob, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
+      const fov = game.time < (game.dashUntil || 0) ? 78 : 70; // ダッシュ中は少し広く見える
+      if (Math.abs(camera.fov - fov) > 0.1) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix(); }
       const melee = meleeRule();
       const rifle = !melee && me.ar > 0 && game.gold !== me.id;
       viewGun.visible = !rifle && !melee; viewRifle.visible = rifle;
@@ -2654,6 +2675,13 @@ function step(dt) {
     const fxs = [];
     for (const [k, label] of [['cloak', '🫥 透明'], ['wing', '🪶 飛行'], ['mush', '🍄 でか顔']]) if (me[k + 'T'] > game.time) fxs.push(`${label} ${Math.ceil(me[k + 'T'] - game.time)}`);
     $('fxRow').textContent = fxs.join('  ');
+    { // ダッシュボタン：走っている残り秒／使えるまでの秒
+      const db = $('dashBtn'), run = Math.ceil((game.dashUntil || 0) - game.time), cool = Math.ceil((game.dashReady || 0) - game.time);
+      const st = run > 0 ? 'run' : cool > 0 ? 'cool' : '';
+      const label = run > 0 ? `🏃${run}` : cool > 0 ? `あと${cool}` : 'ダッシュ';
+      if (db.textContent !== label) db.textContent = label;
+      db.className = st;
+    }
     const jb = $('jumpBtn'), wing = fxOn(me, 'wing');
     jb.classList.toggle('wing', wing); jb.textContent = wing ? '上昇' : 'ジャンプ';
     let c = '';
