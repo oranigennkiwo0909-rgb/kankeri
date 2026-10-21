@@ -26,3 +26,13 @@
 - パソコン（WASD＋マウス）とスマホ（タッチ操作）の両方で遊べる
 
 `golden-ball/index.html` だけで動きます（ビルド不要）。
+
+---
+
+# HITOYASUMI（ヒトヤスミ）ホームページ
+
+宝塚・小林の一席だけの貸切美容室のホームページです。
+
+▶ 見る：https://oranigennkiwo0909-rgb.github.io/kankeri/hitoyasumi/
+
+`hitoyasumi/index.html` だけで動きます（ビルド不要）。
