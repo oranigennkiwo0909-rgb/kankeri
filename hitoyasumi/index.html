@@ -53,7 +53,7 @@ header{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;justify-conte
 .hero h1{font-family:var(--serif);font-weight:300;font-size:clamp(52px,13vw,190px);letter-spacing:.06em;line-height:1;margin:.2em 0 .25em;white-space:nowrap}
 .hero h1 .ch{display:inline-block;opacity:0;transform:translateY(60%) rotate(8deg);filter:blur(12px)}
 .hero h1 .ch.g{background:linear-gradient(180deg,var(--gold2),var(--gold) 60%,#8c6a36);-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero .copy{font-family:var(--mincho);font-size:clamp(17px,2.4vw,26px);letter-spacing:.25em;opacity:0;transform:translateY(20px)}
+.hero .copy{font-family:var(--mincho);font-size:clamp(17px,2.4vw,26px);letter-spacing:.25em;line-height:1.8;opacity:0;transform:translateY(20px)}
 .hero .sub{margin-top:14px;color:var(--mute);font-size:13px;letter-spacing:.2em;opacity:0;transform:translateY(20px)}
 body.ready .hero h1 .ch{animation:chIn 1.3s cubic-bezier(.2,.8,.2,1) forwards}
 body.ready .hero .kicker{animation:up 1.2s .4s forwards}
@@ -91,9 +91,12 @@ p.lead{color:var(--mute);font-size:15px;letter-spacing:.06em;max-width:36em;marg
 /* concept */
 .concept .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:clamp(40px,7vw,110px);align-items:center}
 .seat{position:relative;aspect-ratio:4/5;border:1px solid var(--line);overflow:hidden;background:radial-gradient(ellipse at 50% 30%,rgba(201,164,106,.25),transparent 60%),linear-gradient(160deg,#1c1813,#0b0a09)}
-.seat svg{position:absolute;inset:0;width:100%;height:100%}
+.seat img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.15);transition:transform 2.4s cubic-bezier(.2,.8,.2,1);filter:brightness(.82) contrast(1.05)}
+.seat.in img{transform:scale(1)}
+.seat::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,10,9,.35),transparent 30%,transparent 60%,rgba(11,10,9,.75))}
+.seat .cap,.seat .num{z-index:1}
 .seat .num{position:absolute;right:20px;bottom:6px;font-family:var(--serif);font-size:clamp(90px,14vw,180px);line-height:1;color:transparent;-webkit-text-stroke:1px rgba(201,164,106,.5)}
-.seat .cap{position:absolute;left:20px;top:18px;font-family:var(--serif);letter-spacing:.3em;font-size:12px;color:var(--mute)}
+.seat .cap{position:absolute;left:20px;top:18px;font-family:var(--serif);letter-spacing:.3em;font-size:12px;color:var(--ink)}
 @media(max-width:860px){.concept .grid{grid-template-columns:1fr}.seat{max-width:440px}}
 
 /* features */
@@ -107,14 +110,25 @@ p.lead{color:var(--mute);font-size:15px;letter-spacing:.06em;max-width:36em;marg
 .card p{color:var(--mute);font-size:14px;position:relative}
 @media(max-width:860px){.cards{grid-template-columns:1fr}}
 
+/* gallery */
+.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,1.5vw,18px);padding:0 clamp(16px,6vw,96px);margin:clamp(70px,10vw,130px) auto 0;max-width:1372px}
+.gallery figure{position:relative;aspect-ratio:3/4;overflow:hidden;border:1px solid var(--line)}
+.gallery figure:nth-child(2){transform:translateY(40px)}
+.gallery figure:nth-child(2).in{transform:translateY(40px)}
+.gallery img{width:100%;height:100%;object-fit:cover;filter:brightness(.85) saturate(.9);transition:transform 1.2s cubic-bezier(.2,.8,.2,1),filter .8s}
+.gallery figure:hover img{transform:scale(1.06);filter:brightness(1) saturate(1)}
+.gallery figcaption{position:absolute;left:14px;bottom:10px;font-family:var(--serif);font-size:12px;letter-spacing:.35em;color:var(--ink)}
+@media(max-width:720px){.gallery{grid-template-columns:1fr 1fr}.gallery figure:nth-child(3){display:none}.gallery figure:nth-child(2),.gallery figure:nth-child(2).in{transform:translateY(28px)}}
+
 /* menu */
 .menu-list{margin-top:64px;border-top:1px solid var(--line)}
-.mi{display:grid;grid-template-columns:1fr auto;gap:8px 24px;align-items:baseline;padding:30px 4px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+.mi{display:grid;grid-template-columns:1fr auto;gap:8px 24px;align-items:baseline;padding:24px 4px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
 .mi::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(201,164,106,.12),transparent);transform:scaleX(0);transform-origin:left;transition:transform .7s cubic-bezier(.2,.8,.2,1)}
 .mi:hover::before{transform:scaleX(1)}
 .mi h4{font-family:var(--mincho);font-weight:400;font-size:clamp(19px,2.2vw,24px);letter-spacing:.08em;position:relative}
 .mi h4 small{display:block;font-family:var(--serif);font-size:12px;letter-spacing:.35em;color:var(--gold);margin-bottom:4px}
 .mi .price{font-family:var(--serif);font-size:clamp(22px,2.6vw,30px);position:relative}
+.mi .inc{font-size:12px;color:var(--mute);margin-left:.8em;letter-spacing:.05em}
 .mi p{grid-column:1/-1;color:var(--mute);font-size:13px;position:relative}
 .note{margin-top:22px;font-size:12px;color:var(--mute)}
 
@@ -152,6 +166,7 @@ dt{font-family:var(--serif);letter-spacing:.25em;color:var(--gold)}
 .arrow{transition:transform .4s}
 .btn:hover .arrow{transform:translateX(6px)}
 
+.tip{margin-top:36px;font-size:12px;color:var(--mute);line-height:2}
 footer{padding:40px 16px 60px;text-align:center;font-family:var(--serif);font-size:12px;letter-spacing:.3em;color:var(--mute);border-top:1px solid var(--line)}
 
 /* cursor glow (pc only) */
@@ -181,7 +196,7 @@ footer{padding:40px 16px 60px;text-align:center;font-family:var(--serif);font-si
     <div class="hero-inner">
       <p class="kicker">Private Hair Salon — Takarazuka</p>
       <h1 id="title" aria-label="HITOYASUMI">HITOYASUMI</h1>
-      <p class="copy">ひと休み、しませんか。</p>
+      <p class="copy">美容室が苦手な方も、<br>ほっとひとやすみ。</p>
       <p class="sub">宝塚・小林　一席だけの完全予約制 貸切美容室</p>
     </div>
     <div class="scroll">SCROLL</div>
@@ -204,20 +219,13 @@ footer{padding:40px 16px 60px;text-align:center;font-family:var(--serif);font-si
         </h2>
         <p class="lead rv d2">
           HITOYASUMI は、人見知りだった美容師がひとりで営む、一席だけの貸切美容室です。<br>
-          ご予約の時間は、お店まるごとあなた専用。ほかのお客様と顔を合わせることも、待たされることもありません。<br>
-          髪を整えながら、心もすこし、ひと休み。
+          最初から最後までマンツーマン。周りを気にせず、ゆっくり過ごせる空間です。<br>
+          髪を整える時間が、心を整える時間に。
         </p>
       </div>
       <div class="seat rv d1">
+        <img src="img/cut.jpg" alt="施術中の店内" loading="lazy">
         <p class="cap">ONLY ONE SEAT</p>
-        <svg viewBox="0 0 400 500" fill="none" stroke="#c9a46a" stroke-width="1.2" opacity=".85">
-          <circle cx="200" cy="120" r="70" stroke-opacity=".35"/>
-          <circle cx="200" cy="120" r="46" stroke-opacity=".6"/>
-          <path d="M140 250 q0-30 30-30 h60 q30 0 30 30 v70 h-120z"/>
-          <path d="M125 320 h150 v28 h-150z"/>
-          <path d="M200 348 v80 M150 440 h100 M200 428 v12"/>
-          <path d="M60 470 h280" stroke-opacity=".3"/>
-        </svg>
         <span class="num">01</span>
       </div>
     </div>
@@ -247,17 +255,26 @@ footer{padding:40px 16px 60px;text-align:center;font-family:var(--serif);font-si
     </div>
   </section>
 
+  <div class="gallery" aria-label="店内の写真">
+    <figure class="rv"><img src="img/front.jpg" alt="お店の外観" loading="lazy"><figcaption>ENTRANCE</figcaption></figure>
+    <figure class="rv d1"><img src="img/spa.jpg" alt="シャンプー台" loading="lazy"><figcaption>HEAD SPA</figcaption></figure>
+    <figure class="rv d2"><img src="img/cut.jpg" alt="施術中の様子" loading="lazy"><figcaption>ONE ON ONE</figcaption></figure>
+  </div>
+
   <section id="menu">
     <div class="wrap">
       <p class="label rv">MENU</p>
       <h2 class="rv"><span class="mask"><span>メニュー</span></span></h2>
       <div class="menu-list">
-        <div class="mi rv"><h4><small>CUT</small>カット</h4><span class="price">¥0,000</span><p>シャンプー・ブロー込み</p></div>
-        <div class="mi rv"><h4><small>COLOR</small>カラー</h4><span class="price">¥0,000〜</span><p>白髪染め・おしゃれ染め</p></div>
-        <div class="mi rv"><h4><small>PERM</small>パーマ</h4><span class="price">¥0,000〜</span><p>ふんわり、くせを活かすデザインまで</p></div>
-        <div class="mi rv"><h4><small>HEAD SPA</small>ヘッドスパ</h4><span class="price">¥0,000〜</span><p>頭皮も心もほぐれる、ひと休みの時間</p></div>
+        <div class="mi rv"><h4><small>CUT</small>カット</h4><span class="price">¥5,800</span></div>
+        <div class="mi rv"><h4><small>COLOR</small>カラー</h4><span class="price">¥7,800</span></div>
+        <div class="mi rv"><h4><small>PERM</small>パーマ<span class="inc">カット込み</span></h4><span class="price">¥14,600</span></div>
+        <div class="mi rv"><h4><small>DIGITAL PERM</small>デジタルパーマ<span class="inc">カット込み</span></h4><span class="price">¥18,800</span></div>
+        <div class="mi rv"><h4><small>STRAIGHTENING</small>縮毛矯正<span class="inc">カット込み</span></h4><span class="price">¥18,800</span></div>
+        <div class="mi rv"><h4><small>TREATMENT</small>トリートメント</h4><span class="price">¥3,800</span></div>
+        <div class="mi rv"><h4><small>HEAD SPA</small>ヘッドスパ</h4><span class="price">¥4,800</span><p>貸切空間でうける、頭皮も心もほぐれるひと休みの時間。</p></div>
       </div>
-      <p class="note">※ 料金は仮の表示です。正式なメニュー・料金に差し替えてください。</p>
+      <p class="note">※ ご予約の際は、希望メニューと希望日時をお送りください。</p>
     </div>
   </section>
 
@@ -268,9 +285,9 @@ footer{padding:40px 16px 60px;text-align:center;font-family:var(--serif);font-si
         <p class="label rv">STYLIST</p>
         <p class="name rv d1">nao<small>HITOYASUMI オーナー / 美容師</small></p>
         <p class="lead rv d2">
-          人見知りの美容師だからこそ、人見知りのお客様の気持ちがわかります。<br>
-          無理に話さなくて大丈夫。あなたが一番リラックスできる過ごし方で、髪を整えます。<br>
-          TikTok LIVE も、やってます。
+          人見知りだった僕が、自分の美容室を持ちました。<br>
+          だからこそ、美容室が苦手な方の気持ちがわかります。無理に話さなくて大丈夫。あなたが一番リラックスできる過ごし方で、髪を整えます。<br>
+          毎朝 8:15〜 TikTok で、美容師目線の商品レビュー LIVE もやっています。
         </p>
       </div>
     </div>
@@ -285,9 +302,10 @@ footer{padding:40px 16px 60px;text-align:center;font-family:var(--serif);font-si
           <dt>NAME</dt><dd>HITOYASUMI（ヒトヤスミ）</dd>
           <dt>ADDRESS</dt><dd>兵庫県宝塚市小林4丁目8-2-108</dd>
           <dt>STATION</dt><dd>阪急今津線「小林駅」東口から徒歩約10分</dd>
+          <dt>OPEN</dt><dd>10:00〜18:00</dd>
           <dt>TEL</dt><dd><a href="tel:0797972045">0797-97-2045</a></dd>
           <dt>CLOSED</dt><dd>木曜日・第3水曜日</dd>
-          <dt>STYLE</dt><dd>完全予約制</dd>
+          <dt>STYLE</dt><dd>完全予約制・一席のみ</dd>
         </dl>
         <div class="map rv d1">
           <iframe loading="lazy" title="地図" src="https://www.google.com/maps?q=%E5%85%B5%E5%BA%AB%E7%9C%8C%E5%AE%9D%E5%A1%9A%E5%B8%82%E5%B0%8F%E6%9E%974%E4%B8%81%E7%9B%AE8-2&output=embed"></iframe>
@@ -300,11 +318,12 @@ footer{padding:40px 16px 60px;text-align:center;font-family:var(--serif);font-si
     <div class="wrap">
       <p class="label rv" style="justify-content:center">RESERVE</p>
       <p class="big rv"><span class="mask"><span>Take a</span></span><span class="mask"><span class="d1"><em>little</em> break.</span></span></p>
-      <p class="lead rv d2" style="margin:32px auto 0">ご予約・お問い合わせは、下のボタンからどうぞ。</p>
+      <p class="lead rv d2" style="margin:32px auto 0">空き状況・ご予約は LINE で気軽にご相談ください。<br>希望メニューと希望日時をお送りいただければ OK です。</p>
       <div class="btns rv d3">
-        <a class="btn primary" href="https://lit.link/hitoyasumitakarazuka" target="_blank" rel="noopener"><span>ご予約・各種リンク</span><span class="arrow">→</span></a>
+        <a class="btn primary" href="https://lit.link/hitoyasumitakarazuka" target="_blank" rel="noopener"><span>LINE予約・SNSはこちら</span><span class="arrow">→</span></a>
         <a class="btn" href="tel:0797972045"><span>電話する</span><span class="arrow">→</span></a>
       </div>
+      <p class="tip rv">TikTok・Instagram などから開いていてリンクが開かないときは、<br>画面右上の「…」から「外部ブラウザで開く」を選んでください。</p>
     </div>
   </section>
 </main>
